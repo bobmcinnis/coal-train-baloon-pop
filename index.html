@@ -2,63 +2,44 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Coal Train Balloon Pop</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Greenport Express — Balloon Pop</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root {
-      --bg: #cfe9ff;
-      --ui: #0f172a;
-      --ui2:#334155;
+    :root{
+      --bg1:#e5e7eb;      /* light gray sky */
+      --bg2:#d1d5db;
+      --ground:#7fbf73;   /* grassy ground */
+      --rail:#374151;
+      --tie:#7c4a1b;
+      --train-blue:#2563eb;    /* train body (blue) */
+      --train-yellow:#fbbf24;  /* trim (yellow/gold) */
+      --train-dark:#111827;    /* wheels/cannon */
+      --rotary-gold:#f59e0b;
+      --ui:#0f172a;
+      --ui2:#475569;
       --accent:#10b981;
-      --gold:#fbbf24;
     }
-    html, body {
-      margin: 0; padding: 0; height: 100%;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
-      color: var(--ui);
-      background: linear-gradient(#bfe1ff, #e6f5ff 60%, #f5fbff);
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
+    body{background:linear-gradient(var(--bg1),var(--bg2))}
+    .wrap{max-width:1100px;margin:0 auto;min-height:100dvh;display:grid;grid-template-rows:auto 1fr auto;gap:10px;padding:12px}
+    header,footer{
+      background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:10px 14px;
+      box-shadow:0 8px 24px rgba(15,23,42,.08);display:flex;align-items:center;justify-content:space-between;gap:12px
     }
-    .wrap {
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      min-height: 100dvh; gap: 8px;
-      max-width: 1100px; margin: 0 auto; padding: 12px;
-    }
-    header, footer {
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      background: white; border: 1px solid #e2e8f0; border-radius: 14px; padding: 10px 14px;
-      box-shadow: 0 6px 20px rgba(15,23,42,.06);
-    }
-    header h1 { font-size: 20px; margin: 0; font-weight: 700; letter-spacing:.2px; }
-    .btn {
-      border: 1px solid #94a3b8; background: #f8fafc; color: var(--ui);
-      padding: 8px 12px; border-radius: 10px; cursor: pointer; font-weight: 600;
-    }
-    .btn:active { transform: translateY(1px); }
-    .btn.primary { background: var(--accent); border-color: #059669; color: white; }
-    .hud {
-      display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
-      color: var(--ui2); font-weight: 700;
-    }
-    #game {
-      width: 100%; aspect-ratio: 16/9; background: var(--bg);
-      display: block; border-radius: 16px; border: 1px solid #dbeafe;
-      box-shadow: 0 10px 30px rgba(2,6,23,.08);
-      touch-action: none;  /* smoother pointer events on mobile */
-    }
-    .help {
-      font-size: 14px; color:#475569;
-    }
-    .kbd {
-      border: 1px solid #cbd5e1; background: #f8fafc; border-bottom-width: 3px; padding: 2px 6px; border-radius: 6px;
-      font-weight: 700; font-size: 12px;
-    }
+    h1{margin:0;font-size:20px;letter-spacing:.3px}
+    .hud{display:flex;gap:14px;flex-wrap:wrap;color:var(--ui2);font-weight:700}
+    .btn{border:1px solid #94a3b8;background:#f8fafc;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}
+    .btn.primary{background:var(--accent);color:#fff;border-color:#059669}
+    #game{display:block;width:100%;aspect-ratio:16/9;background:var(--bg1);border-radius:16px;border:1px solid #dbeafe;box-shadow:0 10px 30px rgba(2,6,23,.08);touch-action:none}
+    .help{font-size:14px;color:var(--ui2)}
+    .kbd{border:1px solid #cbd5e1;background:#f9fafb;border-bottom-width:3px;border-radius:6px;padding:2px 6px;font-size:12px;font-weight:700}
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
-      <h1>🚂 Coal Train Balloon Pop</h1>
+      <h1>🚂 Greenport Express — Balloon Pop</h1>
       <div class="hud">
         <span>Score: <span id="score">0</span></span>
         <span>Level: <span id="level">1</span></span>
@@ -69,539 +50,387 @@
       </div>
     </header>
 
-    <canvas id="game" width="1280" height="720" aria-label="Balloon popping game canvas"></canvas>
+    <canvas id="game" width="1280" height="720" aria-label="Greenport Express game canvas"></canvas>
 
     <footer>
       <div class="help">
-        Aim with mouse/touch and <span class="kbd">Click/Tap</span> to shoot.
-        <span class="kbd">Space</span> shoots too. Bonus waves appear sometimes!
+        Aim with mouse/touch and <span class="kbd">Click/Tap</span> to shoot. <span class="kbd">Space</span> also shoots.
+        Watch for the <strong>Rotary gear balloon</strong> — it’s worth big points!
       </div>
-      <div class="help">Built for web embedding — single file, no external assets.</div>
+      <div class="help">Single-file, embeddable. Add <code>balloon-pop.wav</code> next to this file.</div>
     </footer>
   </div>
 
   <script>
-    // ------------------ Basic Canvas Setup ------------------
+    // ===== Canvas bootstrap (crisp on any size) =====
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
-
-    // Resize canvas to fit element size while keeping resolution crisp
-    function fitCanvas() {
-      const rect = canvas.getBoundingClientRect();
-      const scale = devicePixelRatio || 1;
-      canvas.width = Math.floor(rect.width * scale);
-      canvas.height = Math.floor(rect.height * scale);
+    function fitCanvas(){
+      const r = canvas.getBoundingClientRect();
+      const s = devicePixelRatio || 1;
+      canvas.width = Math.max(640, Math.floor(r.width*s));
+      canvas.height = Math.floor(canvas.width/16*9);
     }
-    new ResizeObserver(fitCanvas).observe(canvas);
-    fitCanvas();
+    new ResizeObserver(fitCanvas).observe(canvas); fitCanvas();
 
-    // ------------------ Game State ------------------
-    let running = true;
-    let muted = false;
-
+    // ===== UI =====
     const uiScore = document.getElementById('score');
     const uiLevel = document.getElementById('level');
-    const uiTime  = document.getElementById('time');
-
+    const uiTime = document.getElementById('time');
     const pauseBtn = document.getElementById('pauseBtn');
-    const muteBtn  = document.getElementById('muteBtn');
+    const muteBtn = document.getElementById('muteBtn');
     const restartBtn = document.getElementById('restartBtn');
 
-    let gameState;
+    // ===== Game state =====
+    let running = true, muted = false;
+    let lastFrame = performance.now();
+    let gs;
 
-    function resetGame() {
-      gameState = {
-        score: 0,
-        level: 1,
-        timeLeft: 60, // seconds per level
-        lastTimeUpdate: performance.now(),
-        pointer: { x: canvas.width*0.25, y: canvas.height*0.6 },
-        bullets: [],
-        balloons: [],
-        particles: [],
-        bonusMode: false,
-        bonusTimer: 0,
-        trackOffset: 0,
-        treesOffset: 0,
-        farTreesOffset: 0,
-        cloudsOffset: 0,
-        shootCooldown: 0,
-        goldenChance: 0.06,
+    function resetGame(){
+      gs = {
+        score:0, level:1, timeLeft:60, lastTick:performance.now(),
+        pointer:{x:canvas.width*0.4, y:canvas.height*0.55},
+        bullets:[], balloons:[], particles:[],
+        bonus:false, bonusTimer:0,
+        spawnAcc:0,
+        offsets:{clouds:0, far:0, mid:0, track:0},
+        goldenChance:0.06, rotaryChance:0.045, // Rotary balloon chance
+        shootCooldown:0
       };
-      uiScore.textContent = 0;
-      uiLevel.textContent = 1;
-      uiTime.textContent = 60;
+      uiScore.textContent=0; uiLevel.textContent=1; uiTime.textContent=60;
       running = true;
     }
     resetGame();
 
-    // ------------------ Input ------------------
-    function canvasToGameCoords(e) {
-      const rect = canvas.getBoundingClientRect();
-      const scale = canvas.width / rect.width;
-      const x = (e.clientX - rect.left) * scale;
-      const y = (e.clientY - rect.top) * scale;
-      return { x, y };
-    }
-    canvas.addEventListener('pointermove', e => {
-      gameState.pointer = canvasToGameCoords(e);
-    });
-    canvas.addEventListener('pointerdown', e => {
-      gameState.pointer = canvasToGameCoords(e);
-      shoot();
-    });
-    window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space') { shoot(); }
-      if (e.key.toLowerCase() === 'p') togglePause();
-      if (e.key.toLowerCase() === 'm') toggleMute();
-    });
-
-    pauseBtn.onclick = togglePause;
-    muteBtn.onclick = toggleMute;
-    restartBtn.onclick = resetGame;
-    function togglePause() {
-      running = !running;
-      pauseBtn.textContent = running ? 'Pause' : 'Resume';
-      if (running) lastFrame = performance.now(); // smooth resume
-    }
-    function toggleMute() {
-      muted = !muted;
-      muteBtn.textContent = muted ? 'Unmute' : 'Mute';
-    }
-
-    // ------------------ Audio (tiny synth) ------------------
+    // ===== Audio =====
+    // Use external file for pop. Keep a tiny synth for shoot.
+    const popAudio = new Audio('balloon-pop.wav'); popAudio.preload = 'auto';
     let ac;
-    function ensureAudio() {
-      if (!ac) {
-        try { ac = new (window.AudioContext || window.webkitAudioContext)(); }
-        catch(_) { ac = null; }
-      }
-      return ac;
+    function ctxAudio(){ if(!ac){ try{ ac=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ ac=null; } } return ac; }
+    function shootBeep(){ if(muted||!ctxAudio()) return; const t=ac.currentTime;
+      const o=ac.createOscillator(), g=ac.createGain();
+      o.type='square'; o.frequency.value=260;
+      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.04,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.09);
+      o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t+0.1);
     }
-    function beep(freq=600, dur=0.06, type='triangle', gain=0.03) {
-      if (muted || !ensureAudio()) return;
-      const t0 = ac.currentTime;
-      const o = ac.createOscillator();
-      const g = ac.createGain();
-      o.type = type;
-      o.frequency.value = freq;
-      g.gain.setValueAtTime(0, t0);
-      g.gain.linearRampToValueAtTime(gain, t0+0.005);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
-      o.connect(g); g.connect(ac.destination);
-      o.start(t0); o.stop(t0+dur+0.01);
+    function popSound(pitch=1){
+      if(muted) return;
+      try{ const s=popAudio.cloneNode(); s.playbackRate=pitch; s.currentTime=0; s.play(); }
+      catch(e){ /* ignore */ }
     }
-    function popSound(golden=false) {
-      beep(golden ? 880 : 720, golden ? 0.12 : 0.08, 'square', golden?0.05:0.035);
-    }
-    function shootSound() {
-      beep(240, 0.05, 'sawtooth', 0.03);
-    }
-    function levelUpSound() {
-      beep(660, 0.08); setTimeout(()=>beep(880,0.08), 80);
+    function levelChime(){
+      if(muted||!ctxAudio()) return; const t=ac.currentTime;
+      const freqs=[640,800,960]; freqs.forEach((f,i)=>{ const o=ac.createOscillator(), g=ac.createGain();
+        o.type='triangle'; o.frequency.value=f; const t0=t+i*0.09;
+        g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(0.05,t0+0.03); g.gain.exponentialRampToValueAtTime(0.0001,t0+0.1);
+        o.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0+0.12);
+      });
     }
 
-    // ------------------ Entities ------------------
-    function spawnBalloon(isBonus=false) {
-      const w = canvas.width, h = canvas.height;
-      const x = Math.random() * (w * 0.9 - w*0.1) + w*0.1;
-      const speed = isBonus ? (h*0.15 + Math.random()*h*0.1) : (h*0.05 + Math.random()*h*0.06 + gameState.level*0.003*h);
-      const golden = !isBonus && Math.random() < gameState.goldenChance;
+    // ===== Input =====
+    function toCoords(e){ const r=canvas.getBoundingClientRect(); const s=canvas.width/r.width; return {x:(e.clientX-r.left)*s,y:(e.clientY-r.top)*s}; }
+    canvas.addEventListener('pointermove',e=>{ gs.pointer=toCoords(e); });
+    canvas.addEventListener('pointerdown',e=>{ gs.pointer=toCoords(e); shoot(); });
+    window.addEventListener('keydown',e=>{
+      if(e.code==='Space'){ shoot(); }
+      if(e.key.toLowerCase()==='p'){ togglePause(); }
+      if(e.key.toLowerCase()==='m'){ toggleMute(); }
+    });
+    pauseBtn.onclick=togglePause; muteBtn.onclick=toggleMute; restartBtn.onclick=resetGame;
+    function togglePause(){ running=!running; pauseBtn.textContent=running?'Pause':'Resume'; if(running) lastFrame=performance.now(); }
+    function toggleMute(){ muted=!muted; muteBtn.textContent=muted?'Unmute':'Mute'; }
+
+    // ===== Helpers =====
+    function trainPos(){
+      const w=canvas.width,h=canvas.height, baseY=h*0.74;
+      const x=w*0.18 + Math.sin(performance.now()/700)*w*0.006; // slight bob
+      const cannonX=x + w*0.14; const cannonY=baseY - h*0.11;
+      return {x, y:baseY, cannonX, cannonY};
+    }
+    function shoot(){
+      const now=performance.now(); if(now<gs.shootCooldown) return;
+      gs.shootCooldown = now + 110;
+      const t=trainPos(), ang=Math.atan2(gs.pointer.y - t.cannonY, gs.pointer.x - t.cannonX);
+      const sp=canvas.height*0.63;
+      gs.bullets.push({x:t.cannonX, y:t.cannonY, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp, life:0});
+      shootBeep();
+    }
+    function burst(x,y,color,count=16){
+      for(let i=0;i<count;i++){
+        const a=Math.random()*Math.PI*2, s=(Math.random()*0.5+0.5)*(canvas.height*0.25);
+        gs.particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:0,max:0.5+Math.random()*0.5,color});
+      }
+    }
+
+    // ===== Balloons =====
+    function spawnBalloon(){
+      const h=canvas.height,w=canvas.width;
+      const isRotary = Math.random() < gs.rotaryChance;       // special Rotary balloon
+      const golden = !isRotary && Math.random() < gs.goldenChance;
+      const r = isRotary ? h*0.04 : golden ? h*0.035 : h*(0.022 + Math.random()*0.02);
+      const x = Math.random()*(w*0.85 - w*0.1) + w*0.1;
+      const vy = -(h*0.06 + Math.random()*h*0.06 + gs.level*0.003*h);
       const hue = golden ? 45 : Math.floor(Math.random()*360);
-      const radius = golden ? h*0.03 : h*(0.022 + Math.random()*0.02);
-      gameState.balloons.push({
-        x, y: h + radius + Math.random()*h*0.15,
-        vy: -speed,
-        r: radius,
-        hue, golden, wob: Math.random()*Math.PI*2,
-      });
+      gs.balloons.push({x, y:h + r + Math.random()*h*0.2, vy, r, hue, golden, rotary:isRotary, wob:Math.random()*Math.PI*2});
     }
 
-    function shoot() {
-      const now = performance.now();
-      if (now < gameState.shootCooldown) return;
-      gameState.shootCooldown = now + 110; // ms
-      const train = trainPos();
-      const ang = Math.atan2(gameState.pointer.y - train.cannonY, gameState.pointer.x - train.cannonX);
-      const speed = canvas.height * 0.6;
-      gameState.bullets.push({
-        x: train.cannonX, y: train.cannonY,
-        vx: Math.cos(ang) * speed,
-        vy: Math.sin(ang) * speed,
-        life: 0
-      });
-      shootSound();
-    }
-
-    // ------------------ Parallax / Train ------------------
-    function trainPos() {
-      const h = canvas.height, w = canvas.width;
-      const baseY = h * 0.72;
-      const x = w*0.18 + Math.sin(performance.now()/600)*w*0.005; // subtle bobble
-      const cannonX = x + w*0.06, cannonY = baseY - h*0.08;
-      return { x, y: baseY, cannonX, cannonY };
-    }
-
-    // ------------------ Particles ------------------
-    function burst(x,y,color,count=16) {
-      for (let i=0;i<count;i++){
-        const a = Math.random()*Math.PI*2;
-        const s = (Math.random()*0.5+0.5)* (canvas.height*0.25);
-        gameState.particles.push({
-          x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
-          life: 0, maxLife: 0.5 + Math.random()*0.5,
-          color
-        });
-      }
-    }
-
-    // ------------------ Update & Draw ------------------
-    let lastFrame = performance.now();
-
-    function update(dt) {
-      // Time
-      const now = performance.now();
-      if (now - gameState.lastTimeUpdate >= 1000 && running) {
-        gameState.lastTimeUpdate = now;
-        gameState.timeLeft = Math.max(0, gameState.timeLeft - 1);
-        uiTime.textContent = gameState.timeLeft;
-        if (gameState.timeLeft === 0) {
-          // Level complete or game over (after level 5 we end)
-          if (gameState.level % 3 === 0) { // after bonus, ensure reset
-            gameState.bonusMode = false;
-          }
-          if (gameState.level >= 5) {
-            running = false; // game over state
-          } else {
-            gameState.level++;
-            uiLevel.textContent = gameState.level;
-            levelUpSound();
-            // Bonus every 3rd level
-            if (gameState.level % 3 === 0) {
-              gameState.bonusMode = true;
-              gameState.bonusTimer = 12; // seconds
-            }
-            gameState.timeLeft = 60;
-            uiTime.textContent = gameState.timeLeft;
+    // ===== Update =====
+    function update(dt){
+      // time
+      const now=performance.now();
+      if(now-gs.lastTick>=1000 && running){
+        gs.lastTick=now; gs.timeLeft=Math.max(0, gs.timeLeft-1); uiTime.textContent=gs.timeLeft;
+        if(gs.timeLeft===0){
+          if(gs.level>=5){ running=false; } else{
+            gs.level++; uiLevel.textContent=gs.level; gs.timeLeft=60; uiTime.textContent=60; levelChime();
+            // bonus wave every 3rd level
+            if(gs.level%3===0){ gs.bonus=true; gs.rotaryChance=0.12; gs.bonusTimer=12; }
           }
         }
       }
+      if(gs.bonus){ gs.bonusTimer-=dt; if(gs.bonusTimer<=0){ gs.bonus=false; gs.rotaryChance=0.045; } }
 
-      // Parallax scroll offsets
-      const base = canvas.width * 0.12 * dt;
-      gameState.cloudsOffset = (gameState.cloudsOffset + base*0.15) % canvas.width;
-      gameState.farTreesOffset = (gameState.farTreesOffset + base*0.35) % canvas.width;
-      gameState.treesOffset = (gameState.treesOffset + base*0.6) % canvas.width;
-      gameState.trackOffset = (gameState.trackOffset + base*0.9) % canvas.width;
+      // parallax
+      const base = canvas.width*0.12*dt;
+      gs.offsets.clouds=(gs.offsets.clouds+base*0.15)%canvas.width;
+      gs.offsets.far=(gs.offsets.far+base*0.35)%canvas.width;
+      gs.offsets.mid=(gs.offsets.mid+base*0.6)%canvas.width;
+      gs.offsets.track=(gs.offsets.track+base*0.9)%canvas.width;
 
-      // Spawning balloons
-      const spawnRate = gameState.bonusMode ? 0.028 : (0.012 + gameState.level*0.0018);
-      if (Math.random() < spawnRate * (dt*60)) spawnBalloon(gameState.bonusMode);
+      // spawn balloons
+      const rate = gs.bonus ? 0.028 : (0.012 + gs.level*0.0018);
+      if(Math.random() < rate*(dt*60)) spawnBalloon();
 
-      // Bonus timer
-      if (gameState.bonusMode) {
-        gameState.bonusTimer -= dt;
-        if (gameState.bonusTimer <= 0) gameState.bonusMode = false;
-      }
+      // bullets
+      gs.bullets.forEach(b=>{ b.x+=b.vx*dt; b.y+=b.vy*dt; b.life+=dt; });
+      gs.bullets = gs.bullets.filter(b=> b.life<1.5 && b.x>-60 && b.x<canvas.width+60 && b.y>-60 && b.y<canvas.height+60);
 
-      // Update bullets
-      gameState.bullets.forEach(b=>{
-        b.x += b.vx*dt; b.y += b.vy*dt; b.life += dt;
-      });
-      gameState.bullets = gameState.bullets.filter(b => b.life < 1.5 &&
-        b.x>-50 && b.x<canvas.width+50 && b.y>-50 && b.y<canvas.height+50);
+      // balloons
+      gs.balloons.forEach(b=>{ b.wob+=dt*3; b.x += Math.sin(b.wob)*(canvas.width*0.02*dt); b.y += b.vy*dt; });
+      gs.balloons = gs.balloons.filter(b=> b.y + b.r > -40);
 
-      // Update balloons
-      gameState.balloons.forEach(b=>{
-        b.wob += dt*3;
-        b.x += Math.sin(b.wob)* (canvas.width*0.02 * dt);
-        b.y += b.vy*dt;
-      });
-      // Remove offscreen (popped or flew away)
-      gameState.balloons = gameState.balloons.filter(b => b.y + b.r > -40);
-
-      // Collisions
-      for (let i = gameState.balloons.length - 1; i >= 0; i--) {
-        const bl = gameState.balloons[i];
-        for (let j = gameState.bullets.length - 1; j >= 0; j--) {
-          const bu = gameState.bullets[j];
-          const dx = bl.x - bu.x, dy = bl.y - bu.y;
-          if (dx*dx + dy*dy < (bl.r*bl.r)) {
-            // hit!
-            gameState.bullets.splice(j,1);
-            gameState.balloons.splice(i,1);
-            const pts = bl.golden ? 100 : 20;
-            gameState.score += pts;
-            uiScore.textContent = gameState.score;
-            popSound(bl.golden);
-            const color = bl.golden ? `hsl(45 95% 55%)` : `hsl(${bl.hue} 85% 60%)`;
-            burst(bl.x, bl.y, color, bl.golden?28:16);
+      // collisions
+      for(let i=gs.balloons.length-1;i>=0;i--){
+        const bl=gs.balloons[i];
+        for(let j=gs.bullets.length-1;j>=0;j--){
+          const bu=gs.bullets[j]; const dx=bl.x-bu.x, dy=bl.y-bu.y;
+          if(dx*dx+dy*dy < bl.r*bl.r){
+            gs.bullets.splice(j,1); gs.balloons.splice(i,1);
+            const pts = bl.rotary ? 250 : bl.golden ? 100 : 20;
+            gs.score += pts; uiScore.textContent=gs.score;
+            popSound(bl.rotary ? 1.15 : bl.golden ? 1.1 : 1);
+            const col = bl.rotary ? `hsl(40 95% 50%)` : bl.golden ? `hsl(45 95% 55%)` : `hsl(${bl.hue} 85% 60%)`;
+            burst(bl.x, bl.y, col, bl.rotary?30: bl.golden?22:16);
             break;
           }
         }
       }
 
-      // Update particles
-      gameState.particles.forEach(p=>{
-        p.x += p.vx*dt; p.y += p.vy*dt;
-        p.vx *= (1 - 1.6*dt); p.vy = p.vy* (1 - 1.8*dt) + 300*dt; // drag+gravity
-        p.life += dt;
-      });
-      gameState.particles = gameState.particles.filter(p => p.life < p.maxLife);
+      // particles
+      gs.particles.forEach(p=>{ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=1-1.6*dt; p.vy = p.vy*(1-1.8*dt)+300*dt; p.life+=dt; });
+      gs.particles = gs.particles.filter(p=> p.life<p.max);
     }
 
-    function draw() {
-      const w = canvas.width, h = canvas.height;
+    // ===== Draw =====
+    function draw(){
+      const w=canvas.width,h=canvas.height;
 
-      // Sky
-      const skyGrad = ctx.createLinearGradient(0,0,0,h);
-      skyGrad.addColorStop(0, '#bfe1ff');
-      skyGrad.addColorStop(1, '#eaf7ff');
-      ctx.fillStyle = skyGrad;
-      ctx.fillRect(0,0,w,h);
+      // sky
+      const g=ctx.createLinearGradient(0,0,0,h); g.addColorStop(0,'#e5e7eb'); g.addColorStop(1,'#d1d5db');
+      ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
 
-      // Clouds
-      drawRepeatingLayer(gameState.cloudsOffset, w, (x)=>drawClouds(x, h*0.15));
+      // clouds, trees, ground
+      layerRepeat(gs.offsets.clouds,w, x=>drawClouds(x,h*0.16));
+      layerRepeat(gs.offsets.far,w, x=>drawTrees(x,h*0.62,h*0.28,0.45));
+      layerRepeat(gs.offsets.mid,w, x=>drawTrees(x,h*0.68,h*0.34,0.8));
+      ctx.fillStyle=varGet('--ground'); ctx.fillRect(0,h*0.72,w,h*0.28);
 
-      // Far trees
-      drawRepeatingLayer(gameState.farTreesOffset, w, (x)=>drawTrees(x, h*0.62, h*0.28, 0.45));
+      // track
+      drawTrack(gs.offsets.track);
 
-      // Mid trees
-      drawRepeatingLayer(gameState.treesOffset, w, (x)=>drawTrees(x, h*0.68, h*0.34, 0.8));
-
-      // Ground
-      ctx.fillStyle = '#9be28c';
-      ctx.fillRect(0, h*0.7, w, h*0.3);
-
-      // Track (parallax ties)
-      drawTrack(gameState.trackOffset);
-
-      // Balloons
-      gameState.balloons.forEach(b=>{
-        drawBalloon(b.x, b.y, b.r, b.golden ? 'hsl(45 95% 55%)' : `hsl(${b.hue} 85% 60%)`);
+      // balloons
+      gs.balloons.forEach(b=>{
+        if(b.rotary){ drawRotaryBalloon(b.x,b.y,b.r); }
+        else drawBalloon(b.x,b.y,b.r, b.golden? 'hsl(45 95% 55%)' : `hsl(${b.hue} 85% 60%)`);
       });
 
-      // Train
+      // train (right-facing, blue/yellow)
       drawTrain();
 
-      // Bullets
-      ctx.fillStyle = '#1f2937';
-      gameState.bullets.forEach(b=>{
-        ctx.beginPath();
-        ctx.arc(b.x, b.y, h*0.006, 0, Math.PI*2);
-        ctx.fill();
+      // bullets
+      ctx.fillStyle=varGet('--train-dark');
+      gs.bullets.forEach(b=>{ ctx.beginPath(); ctx.arc(b.x,b.y,h*0.006,0,Math.PI*2); ctx.fill(); });
+
+      // particles
+      gs.particles.forEach(p=>{
+        const a=1-(p.life/p.max); ctx.globalAlpha=a; ctx.fillStyle=p.color; ctx.fillRect(p.x,p.y,h*0.006,h*0.006); ctx.globalAlpha=1;
       });
 
-      // Particles
-      gameState.particles.forEach(p=>{
-        const a = 1 - (p.life/p.maxLife);
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = a;
-        ctx.fillRect(p.x, p.y, h*0.006, h*0.006);
-        ctx.globalAlpha = 1;
-      });
+      // Greenport Express banner (subtle)
+      banner('THE GREENPORT EXPRESS', '#ef4444');
 
-      // Bonus banner
-      if (gameState.bonusMode) {
-        const t = `BONUS WAVE: ${Math.ceil(gameState.bonusTimer)}s`;
-        banner(t, '#f59e0b');
+      // bonus indicator
+      if(gs.bonus){
+        smallBanner(`BONUS WAVE ${Math.ceil(gs.bonusTimer)}s`, '#f59e0b');
       }
 
-      // Pause overlay
-      if (!running) {
-        overlay();
-        const title = gameState.timeLeft===0 && gameState.level>=5 ? "You did it!" : "Paused";
-        bigText(title);
-        smallText("Click Restart or press P to resume.");
-      }
-
-      // Game over overlay (after final level)
-      if (!running && gameState.timeLeft===0 && gameState.level>=5) {
-        overlay(0.7);
-        bigText("🎉 Great Job!");
-        smallText(`Final Score: ${gameState.score}`);
-        smallText("Press Restart to play again.");
+      // overlays
+      if(!running){
+        overlay(0.45);
+        titleText(gs.timeLeft===0 && gs.level>=5 ? 'Great Job!' : 'Paused');
+        subText(gs.timeLeft===0 && gs.level>=5 ? `Final Score: ${gs.score}` : 'Press Restart or P to resume');
       }
     }
 
-    function drawRepeatingLayer(offset, width, drawFn) {
-      drawFn(-offset);
-      drawFn(width - offset);
+    // ===== Drawing helpers =====
+    function varGet(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+    function layerRepeat(off,w,fn){ fn(-off); fn(w-off); }
+    function drawClouds(x,y){
+      ctx.fillStyle='rgba(255,255,255,0.92)';
+      for(let i=0;i<6;i++){ cloudBlob(x+i*(canvas.width/6), y+Math.sin((i+performance.now()/1000))*10, 80, 3+i%2); }
     }
-
-    function drawClouds(xOffset, height) {
-      const ctx2 = ctx, y = height;
-      ctx2.fillStyle = 'rgba(255,255,255,0.9)';
-      for (let i=0;i<6;i++){
-        const x = xOffset + i * (canvas.width/6);
-        cloudBlob(x, y + Math.sin((i+performance.now()/1000))*10, 80, 3+i%2);
-      }
+    function cloudBlob(x,y,r,k=3){ ctx.beginPath(); for(let i=0;i<k;i++){ ctx.arc(x+i*r*0.6,y,r*(0.7+0.2*Math.sin(i)),0,Math.PI*2);} ctx.fill(); }
+    function drawTrees(x,baseY,hgt,dens){ for(let i=0;i<Math.floor(12*dens);i++){ const x0=x+i*(canvas.width/12);
+        ctx.fillStyle='#7c4a1b'; const tw=canvas.width*0.01, th=hgt*0.42; ctx.fillRect(x0,baseY-th,tw,th);
+        ctx.fillStyle='#2e7d32'; ctx.beginPath(); ctx.arc(x0+tw/2, baseY-th, hgt*0.26+(i%2)*hgt*0.08, 0, Math.PI*2); ctx.fill();
+      }}
+    function drawTrack(off){
+      const w=canvas.width,h=canvas.height,y=h*0.78;
+      ctx.strokeStyle=varGet('--rail'); ctx.lineWidth=h*0.012;
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.moveTo(0,y+h*0.06); ctx.lineTo(w,y+h*0.06); ctx.stroke();
+      const step=w*0.08;
+      for(let x=-off; x<w; x+=step){ ctx.fillStyle=varGet('--tie'); ctx.fillRect(x,y-h*0.006,h*0.024,h*0.07); }
     }
-    function cloudBlob(x,y,r,k=3){
-      ctx.beginPath();
-      for (let i=0;i<k;i++){
-        ctx.arc(x + i*r*0.6, y, r*(0.7+0.2*Math.sin(i)), 0, Math.PI*2);
-      }
-      ctx.fill();
-    }
-
-    function drawTrees(xOffset, baseY, height, density=0.7) {
-      for (let i=0;i<Math.floor(12*density); i++){
-        const x = xOffset + i*(canvas.width/12);
-        const trunkW = canvas.width*0.01;
-        const trunkH = height*0.4;
-        ctx.fillStyle = '#7c4a1b';
-        ctx.fillRect(x, baseY - trunkH, trunkW, trunkH);
-        const crownR = height*0.25 + (i%2)*height*0.08;
-        ctx.fillStyle = '#2e7d32';
-        ctx.beginPath();
-        ctx.arc(x + trunkW/2, baseY - trunkH, crownR, 0, Math.PI*2);
-        ctx.fill();
-      }
-    }
-
-    function drawTrack(offset) {
-      const w = canvas.width, h = canvas.height;
-      const y = h*0.76;
-      // Rails
-      ctx.strokeStyle = '#5b6b73'; ctx.lineWidth = h*0.01;
-      ctx.beginPath();
-      ctx.moveTo(0,y); ctx.lineTo(w,y);
-      ctx.moveTo(0,y+h*0.06); ctx.lineTo(w,y+h*0.06);
-      ctx.stroke();
-      // Ties
-      const spacing = w*0.08;
-      for (let x=-offset; x<w; x+=spacing) {
-        ctx.fillStyle = '#7c4a1b';
-        ctx.fillRect(x, y-h*0.005, h*0.02, h*0.07);
-      }
-    }
-
-    function drawBalloon(x,y,r,color) {
-      ctx.save();
-      ctx.fillStyle = color;
-      // body
+    function drawBalloon(x,y,r,color){
+      ctx.save(); ctx.fillStyle=color;
       ctx.beginPath(); ctx.ellipse(x,y,r*0.9,r,0,0,Math.PI*2); ctx.fill();
-      // knot
-      ctx.fillStyle = 'rgba(0,0,0,0.15)';
-      ctx.beginPath(); ctx.moveTo(x,y+r*0.9); ctx.lineTo(x-r*0.12,y+r*1.08); ctx.lineTo(x+r*0.12,y+r*1.08); ctx.closePath(); ctx.fill();
-      // shine
-      ctx.globalAlpha = 0.25;
-      ctx.fillStyle = 'white';
-      ctx.beginPath(); ctx.ellipse(x-r*0.3,y-r*0.3,r*0.25,r*0.15, -0.6, 0, Math.PI*2); ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.fillStyle='rgba(0,0,0,0.15)'; ctx.beginPath(); ctx.moveTo(x,y+r*0.9); ctx.lineTo(x-r*0.12,y+r*1.08); ctx.lineTo(x+r*0.12,y+r*1.08); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha=0.25; ctx.fillStyle='#fff'; ctx.beginPath(); ctx.ellipse(x-r*0.3,y-r*0.3,r*0.25,r*0.15,-0.6,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
       // string
-      ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = Math.max(1, r*0.06);
-      ctx.beginPath(); ctx.moveTo(x, y+r*1.05);
-      ctx.quadraticCurveTo(x+r*0.2, y+r*1.4, x+r*0.05, y+r*1.8);
-      ctx.stroke();
+      ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=Math.max(1,r*0.06);
+      ctx.beginPath(); ctx.moveTo(x,y+r*1.05); ctx.quadraticCurveTo(x+r*0.2, y+r*1.4, x+r*0.05, y+r*1.8); ctx.stroke();
       ctx.restore();
     }
-
-    function drawTrain() {
-      const {x,y,cannonX,cannonY} = trainPos();
-      const w = canvas.width, h = canvas.height;
-
-      // Wheels
-      for (let i=0;i<3;i++){
-        const wx = x + i*w*0.05;
-        ctx.fillStyle = '#1f2937';
-        ctx.beginPath(); ctx.arc(wx, y, h*0.035, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#94a3b8';
-        ctx.beginPath(); ctx.arc(wx, y, h*0.016, 0, Math.PI*2); ctx.fill();
+    function drawRotaryBalloon(x,y,r){
+      // balloon body (clear-ish) with Rotary gear inside
+      drawBalloon(x,y,r,'hsl(40 95% 55%)'); // warm gold balloon
+      drawRotaryCog(x, y, r*0.55, varGet('--train-dark'), varGet('--rotary-gold'));
+    }
+    function drawRotaryCog(cx,cy,R, stroke='#1f2937', fill='#f59e0b'){
+      // simple cog approximating Rotary gear
+      const teeth=16; const inner=R*0.55, ring=R*0.82;
+      ctx.save();
+      ctx.fillStyle=fill; ctx.strokeStyle=stroke; ctx.lineWidth=R*0.08;
+      // gear ring with teeth
+      ctx.beginPath();
+      for(let i=0;i<teeth;i++){
+        const a=(i/teeth)*Math.PI*2;
+        const a2 = a + Math.PI*2/teeth*0.6;
+        const r1=ring, r2=R;
+        if(i===0) ctx.moveTo(cx+Math.cos(a)*r1, cy+Math.sin(a)*r1);
+        ctx.lineTo(cx+Math.cos(a)*r2, cy+Math.sin(a)*r2);
+        ctx.lineTo(cx+Math.cos(a2)*r2, cy+Math.sin(a2)*r2);
+        ctx.lineTo(cx+Math.cos(a2)*r1, cy+Math.sin(a2)*r1);
       }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
 
-      // Body
-      ctx.fillStyle = '#ef4444';
-      ctx.fillRect(x - w*0.01, y - h*0.12, w*0.16, h*0.1);
-      // Boiler
-      ctx.fillStyle = '#374151';
-      ctx.beginPath(); ctx.roundRect(x + w*0.05, y - h*0.16, w*0.1, h*0.08, 12);
-      ctx.fill();
-      // Face window
-      ctx.fillStyle = '#fef08a';
-      ctx.beginPath(); ctx.arc(x + w*0.02, y - h*0.07, h*0.03, 0, Math.PI*2); ctx.fill();
-      // Smile
-      ctx.strokeStyle = '#1f2937'; ctx.lineWidth = h*0.005;
-      ctx.beginPath(); ctx.arc(x + w*0.02, y - h*0.06, h*0.02, 0.2*Math.PI, 0.8*Math.PI); ctx.stroke();
-      // Chimney smoke puff
-      const puffY = y - h*0.2 - Math.sin(performance.now()/300)*h*0.01;
-      ctx.fillStyle = 'rgba(120,144,156,0.4)';
-      ctx.beginPath(); ctx.arc(x + w*0.1, puffY, h*0.025, 0, Math.PI*2); ctx.fill();
+      // inner circle
+      ctx.beginPath(); ctx.arc(cx,cy,inner,0,Math.PI*2); ctx.fillStyle='#fff3cd'; ctx.fill(); ctx.stroke();
 
-      // Cannon (rotates toward pointer)
-      const ang = Math.atan2(gameState.pointer.y - cannonY, gameState.pointer.x - cannonX);
-      ctx.save();
-      ctx.translate(cannonX, cannonY);
-      ctx.rotate(ang);
-      ctx.fillStyle = '#111827';
-      ctx.fillRect(0, -h*0.01, w*0.07, h*0.02);
+      // small center
+      ctx.beginPath(); ctx.arc(cx,cy,inner*0.28,0,Math.PI*2); ctx.fillStyle=fill; ctx.fill();
       ctx.restore();
     }
+    function drawTrain(){
+      const {x,y,cannonX,cannonY}=trainPos(); const w=canvas.width,h=canvas.height;
 
-    function banner(text, color) {
-      const w = canvas.width, h = canvas.height;
-      ctx.save();
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.85;
-      const pad = 12 * (w/1280);
-      ctx.fillRect(w*0.3, h*0.04, w*0.4, h*0.07);
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = 'white';
-      ctx.font = `${Math.round(h*0.045)}px/1.1 sans-serif`;
+      // wheels (right-facing)
+      const wheelR=h*0.035;
+      const wheelXs=[x+w*0.04, x+w*0.09, x+w*0.14, x+w*0.21]; // three cars + engine
+      wheelXs.forEach(wx=>{
+        ctx.fillStyle=varGet('--train-dark'); ctx.beginPath(); ctx.arc(wx,y,wheelR,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#a3b3c4'; ctx.beginPath(); ctx.arc(wx,y,wheelR*0.45,0,Math.PI*2); ctx.fill();
+      });
+
+      // engine cab/body
+      ctx.fillStyle=varGet('--train-blue');
+      ctx.fillRect(x, y-h*0.14, w*0.18, h*0.11); // main body
+      // windows
+      ctx.fillStyle='#93c5fd';
+      ctx.fillRect(x+w*0.01, y-h*0.13, w*0.05, h*0.06);
+      ctx.fillRect(x+w*0.07, y-h*0.13, w*0.05, h*0.06);
+      // yellow trim
+      ctx.fillStyle=varGet('--train-yellow');
+      ctx.fillRect(x- w*0.004, y-h*0.15, w*0.19, h*0.015);
+      ctx.fillRect(x- w*0.004, y-h*0.03, w*0.19, h*0.012);
+
+      // boiler (front cylinder)
+      ctx.fillStyle='#1f2937';
+      roundRect(x+w*0.12, y-h*0.18, w*0.11, h*0.09, 12, true);
+
+      // smokestack + puff
+      ctx.fillStyle=varGet('--train-dark');
+      ctx.fillRect(x+w*0.205, y-h*0.2, w*0.025, h*0.06);
+      ctx.fillStyle='rgba(120,144,156,0.4)';
+      const puffY = y-h*0.23 - Math.sin(performance.now()/260)*h*0.01;
+      ctx.beginPath(); ctx.arc(x+w*0.22, puffY, h*0.025, 0, Math.PI*2); ctx.fill();
+
+      // tender car with GREENPORT EXPRESS label
+      ctx.fillStyle=varGet('--train-blue');
+      ctx.fillRect(x-w*0.09, y-h*0.10, w*0.12, h*0.08);
+      ctx.fillStyle=varGet('--train-yellow');
+      ctx.fillRect(x-w*0.092, y-h*0.102, w*0.124, h*0.012);
+      ctx.fillRect(x-w*0.092, y-h*0.022, w*0.124, h*0.012);
+      // label
+      ctx.fillStyle='#ffffff';
+      ctx.font=`${Math.round(h*0.03)}px/1.1 sans-serif`;
       ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(text, w*0.5, h*0.075);
-      ctx.restore();
-    }
+      ctx.fillText('GREENPORT', x-w*0.03, y-h*0.065);
+      ctx.fillText('EXPRESS',   x-w*0.03, y-h*0.035);
 
-    function overlay(alpha=0.4) {
-      ctx.save();
-      ctx.fillStyle = `rgba(15,23,42,${alpha})`;
-      ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.restore();
-    }
-    function bigText(t) {
-      ctx.save();
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.font = `${Math.round(canvas.height*0.08)}px/1.1 sans-serif`;
-      ctx.fillText(t, canvas.width/2, canvas.height*0.4);
-      ctx.restore();
-    }
-    function smallText(t) {
-      ctx.save();
-      ctx.fillStyle = '#e2e8f0';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.font = `${Math.round(canvas.height*0.035)}px/1.2 sans-serif`;
-      ctx.fillText(t, canvas.width/2, canvas.height*0.48);
-      ctx.restore();
-    }
+      // couplers (simple lines)
+      ctx.strokeStyle=varGet('--train-dark'); ctx.lineWidth=h*0.006;
+      ctx.beginPath(); ctx.moveTo(x-w*0.01, y-h*0.02); ctx.lineTo(x, y-h*0.02); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x+w*0.18, y-h*0.02); ctx.lineTo(x+w*0.2, y-h*0.02); ctx.stroke();
 
-    // ------------------ Main Loop ------------------
-    function loop(ts) {
-      const dt = Math.min(0.033, (ts - lastFrame)/1000); // clamp to ~30fps max step
-      lastFrame = ts;
-      if (running) update(dt);
-      draw();
-      requestAnimationFrame(loop);
+      // cannon (aims to pointer)
+      const ang=Math.atan2(gs.pointer.y-cannonY, gs.pointer.x-cannonX);
+      ctx.save(); ctx.translate(cannonX, cannonY); ctx.rotate(ang);
+      ctx.fillStyle=varGet('--train-dark'); ctx.fillRect(0, -h*0.01, w*0.08, h*0.02);
+      ctx.restore();
+    }
+    function roundRect(x,y,w,h,r,fill=true){
+      r=Math.min(r,w/2,h/2); ctx.beginPath();
+      ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+      ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); if(fill) ctx.fill(); else ctx.stroke();
+    }
+    function banner(text, color){
+      const w=canvas.width,h=canvas.height; ctx.save();
+      ctx.globalAlpha=0.9; ctx.fillStyle=color; const bw=w*0.5,bh=h*0.07;
+      ctx.fillRect(w*0.25, h*0.04, bw, bh); ctx.globalAlpha=1;
+      ctx.fillStyle='#fff'; ctx.font=`${Math.round(h*0.05)}px/1.1 sans-serif`;
+      ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(text, w*0.5, h*0.075);
+      ctx.restore();
+    }
+    function smallBanner(text, color){
+      const w=canvas.width,h=canvas.height; ctx.save();
+      ctx.globalAlpha=0.85; ctx.fillStyle=color; ctx.fillRect(w*0.34, h*0.14, w*0.32, h*0.055); ctx.globalAlpha=1;
+      ctx.fillStyle='#fff'; ctx.font=`${Math.round(h*0.035)}px/1.1 sans-serif`;
+      ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(text, w*0.5, h*0.167);
+      ctx.restore();
+    }
+    function overlay(a=0.4){ ctx.save(); ctx.fillStyle=`rgba(15,23,42,${a})`; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.restore(); }
+    function titleText(t){ ctx.save(); ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.font=`${Math.round(canvas.height*0.08)}px/1.1 sans-serif`; ctx.fillText(t, canvas.width/2, canvas.height*0.42); ctx.restore(); }
+    function subText(t){ ctx.save(); ctx.fillStyle='#e2e8f0'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.font=`${Math.round(canvas.height*0.035)}px/1.2 sans-serif`; ctx.fillText(t, canvas.width/2, canvas.height*0.50); ctx.restore(); }
+
+    // ===== Main loop =====
+    function loop(ts){
+      const dt=Math.min(0.033, (ts-lastFrame)/1000); lastFrame=ts;
+      if(running) update(dt); draw(); requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
-
-    // ------------------ Polyfill: roundRect for older browsers ------------------
-    if (!CanvasRenderingContext2D.prototype.roundRect) {
-      CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
-        const rr = Math.min(r, w/2, h/2);
-        this.beginPath();
-        this.moveTo(x+rr, y);
-        this.arcTo(x+w, y,   x+w, y+h, rr);
-        this.arcTo(x+w, y+h, x,   y+h, rr);
-        this.arcTo(x,   y+h, x,   y,   rr);
-        this.arcTo(x,   y,   x+w, y,   rr);
-        this.closePath();
-      };
-    }
   </script>
 </body>
 </html>
