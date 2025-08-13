@@ -27,11 +27,8 @@
     #game{display:block;width:100%;aspect-ratio:16/9;background:var(--bg1);border-radius:16px;border:1px solid #dbeafe;box-shadow:0 10px 30px rgba(2,6,23,.08);touch-action:none}
     .help{font-size:14px;color:var(--ui2)}
     .kbd{border:1px solid #cbd5e1;background:#f9fafb;border-bottom-width:3px;border-radius:6px;padding:2px 6px;font-size:12px;font-weight:700}
-    /* splash button */
-    .startbtn{
-      border:0;border-radius:14px;padding:14px 22px;background:var(--brand-red);color:#fff;font-weight:800;cursor:pointer;
-      box-shadow:0 8px 20px rgba(239,68,68,.35); font-size:18px;
-    }
+    .startbtn{border:0;border-radius:14px;padding:14px 22px;background:var(--brand-red);color:#fff;font-weight:800;cursor:pointer;
+      box-shadow:0 8px 20px rgba(239,68,68,.35); font-size:18px;}
   </style>
 </head>
 <body>
@@ -59,7 +56,7 @@
     </footer>
   </div>
 
-  <!-- Preload pop sound via HTMLAudio for better iOS/Safari behavior -->
+  <!-- Preload pop sound for best Safari/iOS behavior -->
   <audio id="popAudio" src="balloon-pop.wav" preload="auto"></audio>
 
   <script>
@@ -93,6 +90,8 @@
         score:0, level:1, timeLeft:60, lastTick:performance.now(),
         pointer:{x:canvas.width*0.4, y:canvas.height*0.55},
         bullets:[], balloons:[], particles:[],
+        pops:[],           // NEW: pop ring/starburst animations
+        floatTexts:[],     // NEW: floating +XX score labels
         bonus:false, bonusTimer:0,
         offsets:{clouds:0, far:0, mid:0, track:0},
         goldenChance:0.06, rotaryChance:0.045,
@@ -100,7 +99,7 @@
       };
       uiScore.textContent=0; uiLevel.textContent=1; uiTime.textContent=60;
       running = !toSplash;
-      pauseBtn.textContent = running ? 'Pause' : 'Pause';
+      pauseBtn.textContent = 'Pause';
     }
     resetGame(true);
 
@@ -112,10 +111,8 @@
     async function unlockAudio(){
       if(audioUnlocked) return;
       try { await popEl.play(); popEl.pause(); popEl.currentTime = 0; audioUnlocked = true; }
-      catch(e){ audioUnlocked = false; } // still fine; we'll fall back if needed
-      if(getAC() && ac.state === 'suspended'){
-        try { await ac.resume(); } catch(e){}
-      }
+      catch(e){ audioUnlocked = false; }
+      if(getAC() && ac.state === 'suspended'){ try { await ac.resume(); } catch(e){} }
     }
 
     function shootBeep(){
@@ -135,7 +132,6 @@
     }
     function popSound(pitch=1){
       if(muted) return;
-      // Try the audio element first; if blocked or error, fall back to synth.
       try {
         const s = popEl.cloneNode(); s.playbackRate = pitch; s.currentTime = 0;
         const p = s.play();
@@ -199,6 +195,24 @@
       }
     }
 
+    // NEW: pop ring/starburst animation object
+    function addPopAnim(x,y,color){
+      gs.pops.push({
+        x,y,color,
+        life:0, max:0.25, // quarter second
+        startR: canvas.height*0.01,
+        endR:   canvas.height*0.06,
+        spikes: 12
+      });
+    }
+    // NEW: floating score label
+    function addFloatText(x,y,text,color){
+      gs.floatTexts.push({
+        x,y,text,color, life:0, max:0.9,
+        vy: -canvas.height*0.15  // upward pixels/sec
+      });
+    }
+
     // ===== Balloons =====
     function spawnBalloon(){
       const h=canvas.height,w=canvas.width;
@@ -256,7 +270,9 @@
             gs.score += pts; uiScore.textContent=gs.score;
             popSound(bl.rotary ? 1.15 : bl.golden ? 1.1 : 1);
             const col = bl.rotary ? `hsl(40 95% 50%)` : bl.golden ? `hsl(45 95% 55%)` : `hsl(${bl.hue} 85% 60%)`;
-            burst(bl.x, bl.y, col, bl.rotary?30: bl.golden?22:16);
+            burst(bl.x, bl.y, col, bl.rotary?30: bl.golden?22:16); // confetti
+            addPopAnim(bl.x, bl.y, col);                            // NEW ring/starburst
+            addFloatText(bl.x, bl.y - bl.r*0.2, `+${pts}`, col);    // NEW floating points
             break;
           }
         }
@@ -265,6 +281,17 @@
       // particles
       gs.particles.forEach(p=>{ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=1-1.6*dt; p.vy = p.vy*(1-1.8*dt)+300*dt; p.life+=dt; });
       gs.particles = gs.particles.filter(p=> p.life<p.max);
+
+      // NEW: update pop animations
+      gs.pops.forEach(p=>{ p.life+=dt; });
+      gs.pops = gs.pops.filter(p=> p.life < p.max);
+
+      // NEW: update floating texts
+      gs.floatTexts.forEach(ft=>{
+        ft.life += dt;
+        ft.y += ft.vy * dt;
+      });
+      gs.floatTexts = gs.floatTexts.filter(ft=> ft.life < ft.max);
     }
 
     // ===== Draw =====
@@ -297,9 +324,50 @@
       ctx.fillStyle=varGet('--train-dark');
       gs.bullets.forEach(b=>{ ctx.beginPath(); ctx.arc(b.x,b.y,h*0.006,0,Math.PI*2); ctx.fill(); });
 
-      // particles
+      // particles (confetti)
       gs.particles.forEach(p=>{
         const a=1-(p.life/p.max); ctx.globalAlpha=a; ctx.fillStyle=p.color; ctx.fillRect(p.x,p.y,h*0.006,h*0.006); ctx.globalAlpha=1;
+      });
+
+      // NEW: pop ring/starburst
+      gs.pops.forEach(p=>{
+        const t = p.life / p.max;
+        const r = p.startR + (p.endR - p.startR) * t;
+        // ring
+        ctx.save();
+        ctx.globalAlpha = 0.9 * (1 - t);
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = Math.max(2, h*0.004*(1-t));
+        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.stroke();
+        // starburst shards
+        ctx.fillStyle = p.color;
+        const spikes = p.spikes;
+        for(let i=0;i<spikes;i++){
+          const a = (i/spikes)*Math.PI*2;
+          const len = r * (0.5 + 0.6*(1-t));
+          const w2 = Math.max(1, r*0.08*(1-t));
+          ctx.beginPath();
+          ctx.moveTo(p.x + Math.cos(a)* (r*0.6), p.y + Math.sin(a)* (r*0.6));
+          ctx.lineTo(p.x + Math.cos(a+0.12)* (r*0.6 + len), p.y + Math.sin(a+0.12)* (r*0.6 + len));
+          ctx.lineTo(p.x + Math.cos(a-0.12)* (r*0.6 + len), p.y + Math.sin(a-0.12)* (r*0.6 + len));
+          ctx.closePath(); ctx.globalAlpha = 0.7*(1-t); ctx.fill();
+        }
+        ctx.restore();
+      });
+
+      // NEW: floating score labels
+      gs.floatTexts.forEach(ft=>{
+        const t = ft.life / ft.max;
+        ctx.save();
+        ctx.globalAlpha = 1 - t;
+        ctx.fillStyle = '#000000';
+        ctx.font = `${Math.round(h*0.05)}px/1.1 sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline='middle';
+        // subtle shadow
+        ctx.fillText(ft.text, ft.x+2, ft.y+2);
+        ctx.fillStyle = ft.color;
+        ctx.fillText(ft.text, ft.x, ft.y);
+        ctx.restore();
       });
 
       // Greenport Express banner
@@ -448,30 +516,24 @@
       ctx.font=`${Math.round(canvas.height*0.038)}px/1.2 sans-serif`; ctx.fillText(t, canvas.width/2, canvas.height*0.48); ctx.restore(); }
 
     function drawSplash(){
-      // Title + subtitle lines
       titleText('Joe Cherry Choo Choo');
       ctx.save();
       ctx.fillStyle='#ffffff'; ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.font=`${Math.round(canvas.height*0.06)}px/1.1 sans-serif`;
       ctx.fillText('— The Greenport Express —', canvas.width/2, canvas.height*0.46);
 
-      // Credit line
       ctx.fillStyle='#fffbeb';
       ctx.font=`${Math.round(canvas.height*0.04)}px/1.1 sans-serif`;
       ctx.fillText('Made possible by the Rotary Club of Greenport', canvas.width/2, canvas.height*0.55);
 
-      // Start button
       const bw = canvas.width*0.22, bh = canvas.height*0.09;
       const bx = canvas.width/2 - bw/2, by = canvas.height*0.64 - bh/2;
       ctx.fillStyle = '#ef4444'; ctx.globalAlpha=0.92; roundRect(bx,by,bw,bh,18,true); ctx.globalAlpha=1;
       ctx.fillStyle='#ffffff'; ctx.font=`${Math.round(canvas.height*0.05)}px/1.1 sans-serif`;
       ctx.fillText('Start', canvas.width/2, canvas.height*0.64);
-      ctx.restore();
 
-      // Hint
-      ctx.save();
       ctx.fillStyle='#e2e8f0'; ctx.font=`${Math.round(canvas.height*0.03)}px/1.1 sans-serif`;
-      ctx.textAlign='center'; ctx.fillText('Tap or press any key to begin', canvas.width/2, canvas.height*0.74);
+      ctx.fillText('Tap or press any key to begin', canvas.width/2, canvas.height*0.74);
       ctx.restore();
     }
 
