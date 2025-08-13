@@ -6,18 +6,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root{
-      --bg1:#e5e7eb;      /* light gray sky */
-      --bg2:#d1d5db;
-      --ground:#7fbf73;   /* grassy ground */
-      --rail:#374151;
-      --tie:#7c4a1b;
-      --train-blue:#2563eb;    /* train body (blue) */
-      --train-yellow:#fbbf24;  /* trim (yellow/gold) */
-      --train-dark:#111827;    /* wheels/cannon */
-      --rotary-gold:#f59e0b;
-      --ui:#0f172a;
-      --ui2:#475569;
-      --accent:#10b981;
+      --bg1:#e5e7eb; --bg2:#d1d5db; --ground:#7fbf73;
+      --rail:#374151; --tie:#7c4a1b;
+      --train-blue:#2563eb; --train-yellow:#fbbf24; --train-dark:#111827;
+      --rotary-gold:#f59e0b; --ui:#0f172a; --ui2:#475569; --accent:#10b981;
+      --brand-red:#ef4444;
     }
     *{box-sizing:border-box}
     html,body{height:100%;margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
@@ -34,6 +27,11 @@
     #game{display:block;width:100%;aspect-ratio:16/9;background:var(--bg1);border-radius:16px;border:1px solid #dbeafe;box-shadow:0 10px 30px rgba(2,6,23,.08);touch-action:none}
     .help{font-size:14px;color:var(--ui2)}
     .kbd{border:1px solid #cbd5e1;background:#f9fafb;border-bottom-width:3px;border-radius:6px;padding:2px 6px;font-size:12px;font-weight:700}
+    /* splash button */
+    .startbtn{
+      border:0;border-radius:14px;padding:14px 22px;background:var(--brand-red);color:#fff;font-weight:800;cursor:pointer;
+      box-shadow:0 8px 20px rgba(239,68,68,.35); font-size:18px;
+    }
   </style>
 </head>
 <body>
@@ -57,12 +55,15 @@
         Aim with mouse/touch and <span class="kbd">Click/Tap</span> to shoot. <span class="kbd">Space</span> also shoots.
         Watch for the <strong>Rotary gear balloon</strong> — it’s worth big points!
       </div>
-      <div class="help">Single-file, embeddable. Add <code>balloon-pop.wav</code> next to this file.</div>
+      <div class="help">Single-file, embeddable. Place <code>balloon-pop.wav</code> next to this file.</div>
     </footer>
   </div>
 
+  <!-- Preload pop sound via HTMLAudio for better iOS/Safari behavior -->
+  <audio id="popAudio" src="balloon-pop.wav" preload="auto"></audio>
+
   <script>
-    // ===== Canvas bootstrap (crisp on any size) =====
+    // ===== Canvas bootstrap =====
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
     function fitCanvas(){
@@ -76,51 +77,74 @@
     // ===== UI =====
     const uiScore = document.getElementById('score');
     const uiLevel = document.getElementById('level');
-    const uiTime = document.getElementById('time');
+    const uiTime  = document.getElementById('time');
     const pauseBtn = document.getElementById('pauseBtn');
-    const muteBtn = document.getElementById('muteBtn');
+    const muteBtn  = document.getElementById('muteBtn');
     const restartBtn = document.getElementById('restartBtn');
 
     // ===== Game state =====
-    let running = true, muted = false;
+    let running = false, muted = false, audioUnlocked = false;
     let lastFrame = performance.now();
     let gs;
 
-    function resetGame(){
+    function resetGame(toSplash=true){
       gs = {
+        phase: toSplash ? 'splash' : 'playing', // 'splash' | 'playing'
         score:0, level:1, timeLeft:60, lastTick:performance.now(),
         pointer:{x:canvas.width*0.4, y:canvas.height*0.55},
         bullets:[], balloons:[], particles:[],
         bonus:false, bonusTimer:0,
-        spawnAcc:0,
         offsets:{clouds:0, far:0, mid:0, track:0},
-        goldenChance:0.06, rotaryChance:0.045, // Rotary balloon chance
+        goldenChance:0.06, rotaryChance:0.045,
         shootCooldown:0
       };
       uiScore.textContent=0; uiLevel.textContent=1; uiTime.textContent=60;
-      running = true;
+      running = !toSplash;
+      pauseBtn.textContent = running ? 'Pause' : 'Pause';
     }
-    resetGame();
+    resetGame(true);
 
     // ===== Audio =====
-    // Use external file for pop. Keep a tiny synth for shoot.
-    const popAudio = new Audio('balloon-pop.wav'); popAudio.preload = 'auto';
+    const popEl = document.getElementById('popAudio');
     let ac;
-    function ctxAudio(){ if(!ac){ try{ ac=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ ac=null; } } return ac; }
-    function shootBeep(){ if(muted||!ctxAudio()) return; const t=ac.currentTime;
-      const o=ac.createOscillator(), g=ac.createGain();
+    function getAC(){ if(!ac){ try{ ac=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ ac=null; } } return ac; }
+
+    async function unlockAudio(){
+      if(audioUnlocked) return;
+      try { await popEl.play(); popEl.pause(); popEl.currentTime = 0; audioUnlocked = true; }
+      catch(e){ audioUnlocked = false; } // still fine; we'll fall back if needed
+      if(getAC() && ac.state === 'suspended'){
+        try { await ac.resume(); } catch(e){}
+      }
+    }
+
+    function shootBeep(){
+      if(muted||!getAC()) return;
+      const t=ac.currentTime, o=ac.createOscillator(), g=ac.createGain();
       o.type='square'; o.frequency.value=260;
-      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.04,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.09);
+      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.05,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.09);
       o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t+0.1);
+    }
+    function synthPop(){
+      if(muted||!getAC()) return;
+      const t=ac.currentTime, o=ac.createOscillator(), g=ac.createGain();
+      o.type='triangle'; o.frequency.setValueAtTime(900,t);
+      o.frequency.exponentialRampToValueAtTime(300, t+0.08);
+      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.06,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+0.1);
+      o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t+0.12);
     }
     function popSound(pitch=1){
       if(muted) return;
-      try{ const s=popAudio.cloneNode(); s.playbackRate=pitch; s.currentTime=0; s.play(); }
-      catch(e){ /* ignore */ }
+      // Try the audio element first; if blocked or error, fall back to synth.
+      try {
+        const s = popEl.cloneNode(); s.playbackRate = pitch; s.currentTime = 0;
+        const p = s.play();
+        if(p && typeof p.then === 'function'){ p.catch(()=>synthPop()); }
+      } catch(e){ synthPop(); }
     }
     function levelChime(){
-      if(muted||!ctxAudio()) return; const t=ac.currentTime;
-      const freqs=[640,800,960]; freqs.forEach((f,i)=>{ const o=ac.createOscillator(), g=ac.createGain();
+      if(muted||!getAC()) return; const t=ac.currentTime;
+      [640,800,960].forEach((f,i)=>{ const o=ac.createOscillator(), g=ac.createGain();
         o.type='triangle'; o.frequency.value=f; const t0=t+i*0.09;
         g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(0.05,t0+0.03); g.gain.exponentialRampToValueAtTime(0.0001,t0+0.1);
         o.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0+0.12);
@@ -130,20 +154,33 @@
     // ===== Input =====
     function toCoords(e){ const r=canvas.getBoundingClientRect(); const s=canvas.width/r.width; return {x:(e.clientX-r.left)*s,y:(e.clientY-r.top)*s}; }
     canvas.addEventListener('pointermove',e=>{ gs.pointer=toCoords(e); });
-    canvas.addEventListener('pointerdown',e=>{ gs.pointer=toCoords(e); shoot(); });
-    window.addEventListener('keydown',e=>{
+    canvas.addEventListener('pointerdown',async e=>{
+      gs.pointer=toCoords(e);
+      if(gs.phase==='splash'){ await startGame(); return; }
+      shoot();
+    });
+    window.addEventListener('keydown',async e=>{
+      if(gs.phase==='splash'){ await startGame(); return; }
       if(e.code==='Space'){ shoot(); }
       if(e.key.toLowerCase()==='p'){ togglePause(); }
       if(e.key.toLowerCase()==='m'){ toggleMute(); }
     });
-    pauseBtn.onclick=togglePause; muteBtn.onclick=toggleMute; restartBtn.onclick=resetGame;
-    function togglePause(){ running=!running; pauseBtn.textContent=running?'Pause':'Resume'; if(running) lastFrame=performance.now(); }
+
+    pauseBtn.onclick=togglePause;
+    muteBtn.onclick=toggleMute;
+    restartBtn.onclick=()=>resetGame(true);
+
+    async function startGame(){
+      await unlockAudio();
+      gs.phase='playing'; running=true; lastFrame=performance.now();
+    }
+    function togglePause(){ if(gs.phase!=='playing') return; running=!running; pauseBtn.textContent=running?'Pause':'Resume'; if(running) lastFrame=performance.now(); }
     function toggleMute(){ muted=!muted; muteBtn.textContent=muted?'Unmute':'Mute'; }
 
     // ===== Helpers =====
     function trainPos(){
       const w=canvas.width,h=canvas.height, baseY=h*0.74;
-      const x=w*0.18 + Math.sin(performance.now()/700)*w*0.006; // slight bob
+      const x=w*0.18 + Math.sin(performance.now()/700)*w*0.006;
       const cannonX=x + w*0.14; const cannonY=baseY - h*0.11;
       return {x, y:baseY, cannonX, cannonY};
     }
@@ -165,7 +202,7 @@
     // ===== Balloons =====
     function spawnBalloon(){
       const h=canvas.height,w=canvas.width;
-      const isRotary = Math.random() < gs.rotaryChance;       // special Rotary balloon
+      const isRotary = Math.random() < gs.rotaryChance;
       const golden = !isRotary && Math.random() < gs.goldenChance;
       const r = isRotary ? h*0.04 : golden ? h*0.035 : h*(0.022 + Math.random()*0.02);
       const x = Math.random()*(w*0.85 - w*0.1) + w*0.1;
@@ -183,7 +220,6 @@
         if(gs.timeLeft===0){
           if(gs.level>=5){ running=false; } else{
             gs.level++; uiLevel.textContent=gs.level; gs.timeLeft=60; uiTime.textContent=60; levelChime();
-            // bonus wave every 3rd level
             if(gs.level%3===0){ gs.bonus=true; gs.rotaryChance=0.12; gs.bonusTimer=12; }
           }
         }
@@ -254,7 +290,7 @@
         else drawBalloon(b.x,b.y,b.r, b.golden? 'hsl(45 95% 55%)' : `hsl(${b.hue} 85% 60%)`);
       });
 
-      // train (right-facing, blue/yellow)
+      // train
       drawTrain();
 
       // bullets
@@ -266,19 +302,23 @@
         const a=1-(p.life/p.max); ctx.globalAlpha=a; ctx.fillStyle=p.color; ctx.fillRect(p.x,p.y,h*0.006,h*0.006); ctx.globalAlpha=1;
       });
 
-      // Greenport Express banner (subtle)
-      banner('THE GREENPORT EXPRESS', '#ef4444');
+      // Greenport Express banner
+      banner('THE GREENPORT EXPRESS', varGet('--brand-red'));
 
       // bonus indicator
-      if(gs.bonus){
-        smallBanner(`BONUS WAVE ${Math.ceil(gs.bonusTimer)}s`, '#f59e0b');
+      if(gs.bonus){ smallBanner(`BONUS WAVE ${Math.ceil(gs.bonusTimer)}s`, '#f59e0b'); }
+
+      // Splash overlay
+      if(gs.phase==='splash'){
+        overlay(0.65);
+        drawSplash();
       }
 
-      // overlays
-      if(!running){
+      // Paused overlay
+      if(gs.phase==='playing' && !running){
         overlay(0.45);
-        titleText(gs.timeLeft===0 && gs.level>=5 ? 'Great Job!' : 'Paused');
-        subText(gs.timeLeft===0 && gs.level>=5 ? `Final Score: ${gs.score}` : 'Press Restart or P to resume');
+        titleText('Paused');
+        subText('Press Restart or P to resume');
       }
     }
 
@@ -306,26 +346,22 @@
       ctx.beginPath(); ctx.ellipse(x,y,r*0.9,r,0,0,Math.PI*2); ctx.fill();
       ctx.fillStyle='rgba(0,0,0,0.15)'; ctx.beginPath(); ctx.moveTo(x,y+r*0.9); ctx.lineTo(x-r*0.12,y+r*1.08); ctx.lineTo(x+r*0.12,y+r*1.08); ctx.closePath(); ctx.fill();
       ctx.globalAlpha=0.25; ctx.fillStyle='#fff'; ctx.beginPath(); ctx.ellipse(x-r*0.3,y-r*0.3,r*0.25,r*0.15,-0.6,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
-      // string
       ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=Math.max(1,r*0.06);
       ctx.beginPath(); ctx.moveTo(x,y+r*1.05); ctx.quadraticCurveTo(x+r*0.2, y+r*1.4, x+r*0.05, y+r*1.8); ctx.stroke();
       ctx.restore();
     }
     function drawRotaryBalloon(x,y,r){
-      // balloon body (clear-ish) with Rotary gear inside
-      drawBalloon(x,y,r,'hsl(40 95% 55%)'); // warm gold balloon
+      drawBalloon(x,y,r,'hsl(40 95% 55%)');
       drawRotaryCog(x, y, r*0.55, varGet('--train-dark'), varGet('--rotary-gold'));
     }
     function drawRotaryCog(cx,cy,R, stroke='#1f2937', fill='#f59e0b'){
-      // simple cog approximating Rotary gear
       const teeth=16; const inner=R*0.55, ring=R*0.82;
       ctx.save();
       ctx.fillStyle=fill; ctx.strokeStyle=stroke; ctx.lineWidth=R*0.08;
-      // gear ring with teeth
       ctx.beginPath();
       for(let i=0;i<teeth;i++){
         const a=(i/teeth)*Math.PI*2;
-        const a2 = a + Math.PI*2/teeth*0.6;
+        const a2=a + Math.PI*2/teeth*0.6;
         const r1=ring, r2=R;
         if(i===0) ctx.moveTo(cx+Math.cos(a)*r1, cy+Math.sin(a)*r1);
         ctx.lineTo(cx+Math.cos(a)*r2, cy+Math.sin(a)*r2);
@@ -333,28 +369,21 @@
         ctx.lineTo(cx+Math.cos(a2)*r1, cy+Math.sin(a2)*r1);
       }
       ctx.closePath(); ctx.fill(); ctx.stroke();
-
-      // inner circle
       ctx.beginPath(); ctx.arc(cx,cy,inner,0,Math.PI*2); ctx.fillStyle='#fff3cd'; ctx.fill(); ctx.stroke();
-
-      // small center
       ctx.beginPath(); ctx.arc(cx,cy,inner*0.28,0,Math.PI*2); ctx.fillStyle=fill; ctx.fill();
       ctx.restore();
     }
     function drawTrain(){
       const {x,y,cannonX,cannonY}=trainPos(); const w=canvas.width,h=canvas.height;
-
-      // wheels (right-facing)
       const wheelR=h*0.035;
-      const wheelXs=[x+w*0.04, x+w*0.09, x+w*0.14, x+w*0.21]; // three cars + engine
+      const wheelXs=[x+w*0.04, x+w*0.09, x+w*0.14, x+w*0.21];
       wheelXs.forEach(wx=>{
         ctx.fillStyle=varGet('--train-dark'); ctx.beginPath(); ctx.arc(wx,y,wheelR,0,Math.PI*2); ctx.fill();
         ctx.fillStyle='#a3b3c4'; ctx.beginPath(); ctx.arc(wx,y,wheelR*0.45,0,Math.PI*2); ctx.fill();
       });
-
-      // engine cab/body
+      // engine body
       ctx.fillStyle=varGet('--train-blue');
-      ctx.fillRect(x, y-h*0.14, w*0.18, h*0.11); // main body
+      ctx.fillRect(x, y-h*0.14, w*0.18, h*0.11);
       // windows
       ctx.fillStyle='#93c5fd';
       ctx.fillRect(x+w*0.01, y-h*0.13, w*0.05, h*0.06);
@@ -363,41 +392,34 @@
       ctx.fillStyle=varGet('--train-yellow');
       ctx.fillRect(x- w*0.004, y-h*0.15, w*0.19, h*0.015);
       ctx.fillRect(x- w*0.004, y-h*0.03, w*0.19, h*0.012);
-
-      // boiler (front cylinder)
+      // boiler
       ctx.fillStyle='#1f2937';
       roundRect(x+w*0.12, y-h*0.18, w*0.11, h*0.09, 12, true);
-
       // smokestack + puff
       ctx.fillStyle=varGet('--train-dark');
       ctx.fillRect(x+w*0.205, y-h*0.2, w*0.025, h*0.06);
       ctx.fillStyle='rgba(120,144,156,0.4)';
       const puffY = y-h*0.23 - Math.sin(performance.now()/260)*h*0.01;
       ctx.beginPath(); ctx.arc(x+w*0.22, puffY, h*0.025, 0, Math.PI*2); ctx.fill();
-
-      // tender car with GREENPORT EXPRESS label
+      // tender car with label
       ctx.fillStyle=varGet('--train-blue');
       ctx.fillRect(x-w*0.09, y-h*0.10, w*0.12, h*0.08);
       ctx.fillStyle=varGet('--train-yellow');
       ctx.fillRect(x-w*0.092, y-h*0.102, w*0.124, h*0.012);
       ctx.fillRect(x-w*0.092, y-h*0.022, w*0.124, h*0.012);
-      // label
       ctx.fillStyle='#ffffff';
       ctx.font=`${Math.round(h*0.03)}px/1.1 sans-serif`;
       ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillText('GREENPORT', x-w*0.03, y-h*0.065);
       ctx.fillText('EXPRESS',   x-w*0.03, y-h*0.035);
-
-      // couplers (simple lines)
+      // couplers
       ctx.strokeStyle=varGet('--train-dark'); ctx.lineWidth=h*0.006;
       ctx.beginPath(); ctx.moveTo(x-w*0.01, y-h*0.02); ctx.lineTo(x, y-h*0.02); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(x+w*0.18, y-h*0.02); ctx.lineTo(x+w*0.2, y-h*0.02); ctx.stroke();
-
-      // cannon (aims to pointer)
+      // cannon
       const ang=Math.atan2(gs.pointer.y-cannonY, gs.pointer.x-cannonX);
       ctx.save(); ctx.translate(cannonX, cannonY); ctx.rotate(ang);
-      ctx.fillStyle=varGet('--train-dark'); ctx.fillRect(0, -h*0.01, w*0.08, h*0.02);
-      ctx.restore();
+      ctx.fillStyle=varGet('--train-dark'); ctx.fillRect(0, -h*0.01, w*0.08, h*0.02); ctx.restore();
     }
     function roundRect(x,y,w,h,r,fill=true){
       r=Math.min(r,w/2,h/2); ctx.beginPath();
@@ -421,14 +443,44 @@
     }
     function overlay(a=0.4){ ctx.save(); ctx.fillStyle=`rgba(15,23,42,${a})`; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.restore(); }
     function titleText(t){ ctx.save(); ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.font=`${Math.round(canvas.height*0.08)}px/1.1 sans-serif`; ctx.fillText(t, canvas.width/2, canvas.height*0.42); ctx.restore(); }
+      ctx.font=`${Math.round(canvas.height*0.085)}px/1.1 sans-serif`; ctx.fillText(t, canvas.width/2, canvas.height*0.38); ctx.restore(); }
     function subText(t){ ctx.save(); ctx.fillStyle='#e2e8f0'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.font=`${Math.round(canvas.height*0.035)}px/1.2 sans-serif`; ctx.fillText(t, canvas.width/2, canvas.height*0.50); ctx.restore(); }
+      ctx.font=`${Math.round(canvas.height*0.038)}px/1.2 sans-serif`; ctx.fillText(t, canvas.width/2, canvas.height*0.48); ctx.restore(); }
+
+    function drawSplash(){
+      // Title + subtitle lines
+      titleText('Joe Cherry Choo Choo');
+      ctx.save();
+      ctx.fillStyle='#ffffff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.font=`${Math.round(canvas.height*0.06)}px/1.1 sans-serif`;
+      ctx.fillText('— The Greenport Express —', canvas.width/2, canvas.height*0.46);
+
+      // Credit line
+      ctx.fillStyle='#fffbeb';
+      ctx.font=`${Math.round(canvas.height*0.04)}px/1.1 sans-serif`;
+      ctx.fillText('Made possible by the Rotary Club of Greenport', canvas.width/2, canvas.height*0.55);
+
+      // Start button
+      const bw = canvas.width*0.22, bh = canvas.height*0.09;
+      const bx = canvas.width/2 - bw/2, by = canvas.height*0.64 - bh/2;
+      ctx.fillStyle = '#ef4444'; ctx.globalAlpha=0.92; roundRect(bx,by,bw,bh,18,true); ctx.globalAlpha=1;
+      ctx.fillStyle='#ffffff'; ctx.font=`${Math.round(canvas.height*0.05)}px/1.1 sans-serif`;
+      ctx.fillText('Start', canvas.width/2, canvas.height*0.64);
+      ctx.restore();
+
+      // Hint
+      ctx.save();
+      ctx.fillStyle='#e2e8f0'; ctx.font=`${Math.round(canvas.height*0.03)}px/1.1 sans-serif`;
+      ctx.textAlign='center'; ctx.fillText('Tap or press any key to begin', canvas.width/2, canvas.height*0.74);
+      ctx.restore();
+    }
 
     // ===== Main loop =====
     function loop(ts){
       const dt=Math.min(0.033, (ts-lastFrame)/1000); lastFrame=ts;
-      if(running) update(dt); draw(); requestAnimationFrame(loop);
+      if(gs.phase==='playing' && running) update(dt);
+      draw();
+      requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
   </script>
