@@ -27,8 +27,6 @@
     #game{display:block;width:100%;aspect-ratio:16/9;background:var(--bg1);border-radius:16px;border:1px solid #dbeafe;box-shadow:0 10px 30px rgba(2,6,23,.08);touch-action:none}
     .help{font-size:14px;color:var(--ui2)}
     .kbd{border:1px solid #cbd5e1;background:#f9fafb;border-bottom-width:3px;border-radius:6px;padding:2px 6px;font-size:12px;font-weight:700}
-    .startbtn{border:0;border-radius:14px;padding:14px 22px;background:var(--brand-red);color:#fff;font-weight:800;cursor:pointer;
-      box-shadow:0 8px 20px rgba(239,68,68,.35); font-size:18px;}
   </style>
 </head>
 <body>
@@ -39,6 +37,7 @@
         <span>Score: <span id="score">0</span></span>
         <span>Level: <span id="level">1</span></span>
         <span>Time: <span id="time">60</span>s</span>
+        <button id="whistleBtn" class="btn">Whistle</button>
         <button id="pauseBtn" class="btn">Pause</button>
         <button id="muteBtn" class="btn">Mute</button>
         <button id="restartBtn" class="btn primary">Restart</button>
@@ -49,15 +48,21 @@
 
     <footer>
       <div class="help">
-        Aim with mouse/touch and <span class="kbd">Click/Tap</span> to shoot. <span class="kbd">Space</span> also shoots.
+        Aim with mouse/touch and <span class="kbd">Click/Tap</span> to shoot. <span class="kbd">Space</span> also shoots. <span class="kbd">W</span> whistles.
         Watch for the <strong>Rotary gear balloon</strong> — it’s worth big points!
       </div>
-      <div class="help">Single-file, embeddable. Place <code>balloon-pop.wav</code> next to this file.</div>
+      <div class="help">Place audio next to this file: <code>balloon-pop.wav</code>, <code>jackpot.wav</code>, <code>level-up.wav</code>, <code>long-high-whistle.wav</code>, <code>double-whistle.wav</code>, <code>double-whistle-2.wav</code>, <code>whistle-short.wav</code>.</div>
     </footer>
   </div>
 
-  <!-- Preload pop sound for best Safari/iOS behavior -->
+  <!-- Preload sounds -->
   <audio id="popAudio" src="balloon-pop.wav" preload="auto"></audio>
+  <audio id="jackpotAudio" src="jackpot.wav" preload="auto"></audio>
+  <audio id="levelupAudio" src="level-up.wav" preload="auto"></audio>
+  <audio id="wh1" src="long-high-whistle.wav" preload="auto"></audio>
+  <audio id="wh2" src="double-whistle.wav" preload="auto"></audio>
+  <audio id="wh3" src="double-whistle-2.wav" preload="auto"></audio>
+  <audio id="wh4" src="whistle-short.wav" preload="auto"></audio>
 
   <script>
     // ===== Canvas bootstrap =====
@@ -75,6 +80,7 @@
     const uiScore = document.getElementById('score');
     const uiLevel = document.getElementById('level');
     const uiTime  = document.getElementById('time');
+    const whistleBtn = document.getElementById('whistleBtn');
     const pauseBtn = document.getElementById('pauseBtn');
     const muteBtn  = document.getElementById('muteBtn');
     const restartBtn = document.getElementById('restartBtn');
@@ -86,12 +92,12 @@
 
     function resetGame(toSplash=true){
       gs = {
-        phase: toSplash ? 'splash' : 'playing', // 'splash' | 'playing'
+        phase: toSplash ? 'splash' : 'playing', // 'splash' | 'playing' | 'milestone'
         score:0, level:1, timeLeft:60, lastTick:performance.now(),
         pointer:{x:canvas.width*0.4, y:canvas.height*0.55},
         bullets:[], balloons:[], particles:[],
-        pops:[],           // NEW: pop ring/starburst animations
-        floatTexts:[],     // NEW: floating +XX score labels
+        pops:[], floatTexts:[],
+        milestone500Shown:false,
         bonus:false, bonusTimer:0,
         offsets:{clouds:0, far:0, mid:0, track:0},
         goldenChance:0.06, rotaryChance:0.045,
@@ -105,13 +111,24 @@
 
     // ===== Audio =====
     const popEl = document.getElementById('popAudio');
+    const jackpotEl = document.getElementById('jackpotAudio');
+    const levelupEl = document.getElementById('levelupAudio');
+    const whistleEls = [
+      document.getElementById('wh1'),
+      document.getElementById('wh2'),
+      document.getElementById('wh3'),
+      document.getElementById('wh4'),
+    ];
     let ac;
     function getAC(){ if(!ac){ try{ ac=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ ac=null; } } return ac; }
 
     async function unlockAudio(){
       if(audioUnlocked) return;
-      try { await popEl.play(); popEl.pause(); popEl.currentTime = 0; audioUnlocked = true; }
-      catch(e){ audioUnlocked = false; }
+      const els=[popEl,jackpotEl,levelupEl,...whistleEls];
+      for(const el of els){
+        try{ await el.play(); el.pause(); el.currentTime=0; }catch(e){}
+      }
+      audioUnlocked = true;
       if(getAC() && ac.state === 'suspended'){ try { await ac.resume(); } catch(e){} }
     }
 
@@ -130,21 +147,37 @@
       g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.06,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+0.1);
       o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t+0.12);
     }
-    function popSound(pitch=1){
+    function playAudioClone(el, rate=1, fallback){
       if(muted) return;
-      try {
-        const s = popEl.cloneNode(); s.playbackRate = pitch; s.currentTime = 0;
-        const p = s.play();
-        if(p && typeof p.then === 'function'){ p.catch(()=>synthPop()); }
-      } catch(e){ synthPop(); }
+      try{
+        const s=el.cloneNode(); s.playbackRate = rate; s.currentTime=0;
+        const p=s.play();
+        if(p && typeof p.then==='function'){ p.catch(()=>fallback && fallback()); }
+      }catch(e){ if(fallback) fallback(); }
     }
-    function levelChime(){
-      if(muted||!getAC()) return; const t=ac.currentTime;
-      [640,800,960].forEach((f,i)=>{ const o=ac.createOscillator(), g=ac.createGain();
-        o.type='triangle'; o.frequency.value=f; const t0=t+i*0.09;
-        g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(0.05,t0+0.03); g.gain.exponentialRampToValueAtTime(0.0001,t0+0.1);
-        o.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0+0.12);
-      });
+    function popSound(rate=1){ playAudioClone(popEl, rate, synthPop); }
+    function jackpotSound(){ playAudioClone(jackpotEl, 1); }
+    function levelupSound(){ playAudioClone(levelupEl, 1); }
+
+    // WHISTLE
+    let lastWhistleAt = 0;
+    function synthWhistle(){
+      if(muted||!getAC()) return;
+      const t=ac.currentTime;
+      const o=ac.createOscillator(); const g=ac.createGain();
+      o.type='sine'; o.frequency.setValueAtTime(700,t);
+      o.frequency.linearRampToValueAtTime(1200, t+0.5);
+      const lfo=ac.createOscillator(); const lfoGain=ac.createGain();
+      lfo.frequency.value=6; lfoGain.gain.value=20; lfo.connect(lfoGain); lfoGain.connect(o.frequency);
+      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.12,t+0.03); g.gain.exponentialRampToValueAtTime(0.0001,t+0.8);
+      o.connect(g); g.connect(ac.destination);
+      o.start(t); lfo.start(t); o.stop(t+0.8); lfo.stop(t+0.8);
+    }
+    async function playWhistle(){
+      const now=performance.now(); if(now-lastWhistleAt<1000) return; lastWhistleAt=now;
+      await unlockAudio();
+      const pick = whistleEls[Math.floor(Math.random()*whistleEls.length)];
+      playAudioClone(pick, 1, synthWhistle);
     }
 
     // ===== Input =====
@@ -153,21 +186,29 @@
     canvas.addEventListener('pointerdown',async e=>{
       gs.pointer=toCoords(e);
       if(gs.phase==='splash'){ await startGame(); return; }
+      if(gs.phase==='milestone'){ resumeAfterMilestone(); return; }
       shoot();
     });
     window.addEventListener('keydown',async e=>{
       if(gs.phase==='splash'){ await startGame(); return; }
+      if(gs.phase==='milestone'){ resumeAfterMilestone(); return; }
       if(e.code==='Space'){ shoot(); }
       if(e.key.toLowerCase()==='p'){ togglePause(); }
       if(e.key.toLowerCase()==='m'){ toggleMute(); }
+      if(e.key.toLowerCase()==='w'){ playWhistle(); }
     });
 
-    pauseBtn.onclick=togglePause;
-    muteBtn.onclick=toggleMute;
+    pauseBtn.onclick=()=>{ if(gs.phase!=='playing') return; running=!running; pauseBtn.textContent=running?'Pause':'Resume'; if(running) lastFrame=performance.now(); };
+    muteBtn.onclick=()=>{ muted=!muted; muteBtn.textContent=muted?'Unmute':'Mute'; };
     restartBtn.onclick=()=>resetGame(true);
+    whistleBtn.onclick=playWhistle;
 
     async function startGame(){
       await unlockAudio();
+      gs.phase='playing'; running=true; lastFrame=performance.now();
+      playWhistle();
+    }
+    function resumeAfterMilestone(){
       gs.phase='playing'; running=true; lastFrame=performance.now();
     }
     function togglePause(){ if(gs.phase!=='playing') return; running=!running; pauseBtn.textContent=running?'Pause':'Resume'; if(running) lastFrame=performance.now(); }
@@ -194,23 +235,11 @@
         gs.particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:0,max:0.5+Math.random()*0.5,color});
       }
     }
-
-    // NEW: pop ring/starburst animation object
     function addPopAnim(x,y,color){
-      gs.pops.push({
-        x,y,color,
-        life:0, max:0.25, // quarter second
-        startR: canvas.height*0.01,
-        endR:   canvas.height*0.06,
-        spikes: 12
-      });
+      gs.pops.push({x,y,color,life:0,max:0.25,startR:canvas.height*0.01,endR:canvas.height*0.06,spikes:12});
     }
-    // NEW: floating score label
     function addFloatText(x,y,text,color){
-      gs.floatTexts.push({
-        x,y,text,color, life:0, max:0.9,
-        vy: -canvas.height*0.15  // upward pixels/sec
-      });
+      gs.floatTexts.push({x,y,text,color,life:0,max:0.9,vy:-canvas.height*0.15});
     }
 
     // ===== Balloons =====
@@ -227,13 +256,13 @@
 
     // ===== Update =====
     function update(dt){
-      // time
       const now=performance.now();
       if(now-gs.lastTick>=1000 && running){
         gs.lastTick=now; gs.timeLeft=Math.max(0, gs.timeLeft-1); uiTime.textContent=gs.timeLeft;
         if(gs.timeLeft===0){
           if(gs.level>=5){ running=false; } else{
-            gs.level++; uiLevel.textContent=gs.level; gs.timeLeft=60; uiTime.textContent=60; levelChime();
+            gs.level++; uiLevel.textContent=gs.level; gs.timeLeft=60; uiTime.textContent=60;
+            levelupSound();              // play level-up.wav on new level
             if(gs.level%3===0){ gs.bonus=true; gs.rotaryChance=0.12; gs.bonusTimer=12; }
           }
         }
@@ -259,38 +288,42 @@
       gs.balloons.forEach(b=>{ b.wob+=dt*3; b.x += Math.sin(b.wob)*(canvas.width*0.02*dt); b.y += b.vy*dt; });
       gs.balloons = gs.balloons.filter(b=> b.y + b.r > -40);
 
-      // collisions
+      // collisions + scoring
       for(let i=gs.balloons.length-1;i>=0;i--){
         const bl=gs.balloons[i];
         for(let j=gs.bullets.length-1;j>=0;j--){
           const bu=gs.bullets[j]; const dx=bl.x-bu.x, dy=bl.y-bu.y;
           if(dx*dx+dy*dy < bl.r*bl.r){
             gs.bullets.splice(j,1); gs.balloons.splice(i,1);
-            const pts = bl.rotary ? 250 : bl.golden ? 100 : 20;
+            const pts = bl.rotary ? 50 : 10;   // << scoring change
             gs.score += pts; uiScore.textContent=gs.score;
-            popSound(bl.rotary ? 1.15 : bl.golden ? 1.1 : 1);
-            const col = bl.rotary ? `hsl(40 95% 50%)` : bl.golden ? `hsl(45 95% 55%)` : `hsl(${bl.hue} 85% 60%)`;
-            burst(bl.x, bl.y, col, bl.rotary?30: bl.golden?22:16); // confetti
-            addPopAnim(bl.x, bl.y, col);                            // NEW ring/starburst
-            addFloatText(bl.x, bl.y - bl.r*0.2, `+${pts}`, col);    // NEW floating points
+            if(bl.rotary) jackpotSound(); else popSound(1);
+            const col = bl.rotary ? `hsl(40 95% 50%)` : `hsl(${bl.hue} 85% 60%)`;
+            burst(bl.x, bl.y, col, bl.rotary?30:16);
+            addPopAnim(bl.x, bl.y, col);
+            addFloatText(bl.x, bl.y - bl.r*0.2, `+${pts}`, col);
+
+            // Milestone popup at 500
+            if(!gs.milestone500Shown && gs.score >= 500){
+              gs.milestone500Shown = true;
+              gs.phase = 'milestone';
+              running = false;
+            }
             break;
           }
         }
       }
 
-      // particles
+      // confetti
       gs.particles.forEach(p=>{ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=1-1.6*dt; p.vy = p.vy*(1-1.8*dt)+300*dt; p.life+=dt; });
       gs.particles = gs.particles.filter(p=> p.life<p.max);
 
-      // NEW: update pop animations
+      // pop animations
       gs.pops.forEach(p=>{ p.life+=dt; });
       gs.pops = gs.pops.filter(p=> p.life < p.max);
 
-      // NEW: update floating texts
-      gs.floatTexts.forEach(ft=>{
-        ft.life += dt;
-        ft.y += ft.vy * dt;
-      });
+      // floating text
+      gs.floatTexts.forEach(ft=>{ ft.life += dt; ft.y += ft.vy * dt; });
       gs.floatTexts = gs.floatTexts.filter(ft=> ft.life < ft.max);
     }
 
@@ -314,7 +347,7 @@
       // balloons
       gs.balloons.forEach(b=>{
         if(b.rotary){ drawRotaryBalloon(b.x,b.y,b.r); }
-        else drawBalloon(b.x,b.y,b.r, b.golden? 'hsl(45 95% 55%)' : `hsl(${b.hue} 85% 60%)`);
+        else drawBalloon(b.x,b.y,b.r, `hsl(${b.hue} 85% 60%)`);
       });
 
       // train
@@ -324,28 +357,25 @@
       ctx.fillStyle=varGet('--train-dark');
       gs.bullets.forEach(b=>{ ctx.beginPath(); ctx.arc(b.x,b.y,h*0.006,0,Math.PI*2); ctx.fill(); });
 
-      // particles (confetti)
+      // confetti
       gs.particles.forEach(p=>{
         const a=1-(p.life/p.max); ctx.globalAlpha=a; ctx.fillStyle=p.color; ctx.fillRect(p.x,p.y,h*0.006,h*0.006); ctx.globalAlpha=1;
       });
 
-      // NEW: pop ring/starburst
+      // pop ring/starburst
       gs.pops.forEach(p=>{
         const t = p.life / p.max;
         const r = p.startR + (p.endR - p.startR) * t;
-        // ring
         ctx.save();
         ctx.globalAlpha = 0.9 * (1 - t);
         ctx.strokeStyle = p.color;
         ctx.lineWidth = Math.max(2, h*0.004*(1-t));
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.stroke();
-        // starburst shards
         ctx.fillStyle = p.color;
         const spikes = p.spikes;
         for(let i=0;i<spikes;i++){
           const a = (i/spikes)*Math.PI*2;
           const len = r * (0.5 + 0.6*(1-t));
-          const w2 = Math.max(1, r*0.08*(1-t));
           ctx.beginPath();
           ctx.moveTo(p.x + Math.cos(a)* (r*0.6), p.y + Math.sin(a)* (r*0.6));
           ctx.lineTo(p.x + Math.cos(a+0.12)* (r*0.6 + len), p.y + Math.sin(a+0.12)* (r*0.6 + len));
@@ -355,7 +385,7 @@
         ctx.restore();
       });
 
-      // NEW: floating score labels
+      // floating score labels
       gs.floatTexts.forEach(ft=>{
         const t = ft.life / ft.max;
         ctx.save();
@@ -363,31 +393,20 @@
         ctx.fillStyle = '#000000';
         ctx.font = `${Math.round(h*0.05)}px/1.1 sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline='middle';
-        // subtle shadow
         ctx.fillText(ft.text, ft.x+2, ft.y+2);
         ctx.fillStyle = ft.color;
         ctx.fillText(ft.text, ft.x, ft.y);
         ctx.restore();
       });
 
-      // Greenport Express banner
+      // banner & bonus
       banner('THE GREENPORT EXPRESS', varGet('--brand-red'));
-
-      // bonus indicator
       if(gs.bonus){ smallBanner(`BONUS WAVE ${Math.ceil(gs.bonusTimer)}s`, '#f59e0b'); }
 
-      // Splash overlay
-      if(gs.phase==='splash'){
-        overlay(0.65);
-        drawSplash();
-      }
-
-      // Paused overlay
-      if(gs.phase==='playing' && !running){
-        overlay(0.45);
-        titleText('Paused');
-        subText('Press Restart or P to resume');
-      }
+      // splash / milestone / pause overlays
+      if(gs.phase==='splash'){ overlay(0.65); drawSplash(); }
+      if(gs.phase==='milestone'){ overlay(0.6); drawMilestone(); }
+      if(gs.phase==='playing' && !running){ overlay(0.45); titleText('Paused'); subText('Press Restart or P to resume'); }
     }
 
     // ===== Drawing helpers =====
@@ -533,7 +552,18 @@
       ctx.fillText('Start', canvas.width/2, canvas.height*0.64);
 
       ctx.fillStyle='#e2e8f0'; ctx.font=`${Math.round(canvas.height*0.03)}px/1.1 sans-serif`;
-      ctx.fillText('Tap or press any key to begin', canvas.width/2, canvas.height*0.74);
+      ctx.fillText('Tap or press any key to begin (W = whistle)', canvas.width/2, canvas.height*0.74);
+      ctx.restore();
+    }
+
+    function drawMilestone(){
+      titleText('🎉 Congratulations!');
+      ctx.save();
+      ctx.fillStyle='#ffffff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.font=`${Math.round(canvas.height*0.06)}px/1.1 sans-serif`;
+      ctx.fillText('You have reached 500 points!', canvas.width/2, canvas.height*0.46);
+      ctx.fillStyle='#e2e8f0'; ctx.font=`${Math.round(canvas.height*0.035)}px/1.1 sans-serif`;
+      ctx.fillText('Tap/click or press any key to keep going', canvas.width/2, canvas.height*0.54);
       ctx.restore();
     }
 
