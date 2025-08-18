@@ -1,4 +1,506 @@
-https://www.google.com/maps/dir/310+6th+St,+Greenport,+NY+11944-1826,+USA/505+Mt+Beulah+Ave,+Southold,+NY+11971/1750+Mt+Beulah+Ave,+Southold,+NY/@41.085099,-72.4322079,480m/data=!3m1!1e3!4m20!4m19!1m5!1m1!1s0x89e898d1fd2eafbf:0xc59a3a94c1e0fe99!2m2!1d-72.3667918!2d41.0971138!1m5!1m1!1s0x89e89bd739a92711:0x5aaff2ec51af3b4e!2m2!1d-72.430827!2d41.0819391!1m5!1m1!1s0x89e89bd99ca753a9:0x4d11f0ce603d715e!2m2!1d-72.4309463!2d41.0852494!3e0?entry=ttu&g_ep=EgoyMDI1MDgxMy4wIKXMDSoASAFQAw%3D%3D
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Greenport Express — Balloon Pop</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<style>
+  :root{
+    --ui:#0f172a; --ui2:#475569;
+    --brand-red:#ef4444;
+    --train-blue:#2563eb; --train-yellow:#fbbf24; --train-dark:#111827;
+    --rotary-gold:#f59e0b;
+  }
+  *{box-sizing:border-box}
+  html,body{
+    height:100%;margin:0;padding:0;
+    overscroll-behavior:contain; /* reduce iOS pull-to-refresh jank */
+    background:#0b2740;          /* behind letterbox */
+    font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial
+  }
+  @supports(padding:max(0px)){
+    body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);}
+  }
+  .wrap{max-width:1100px;margin:0 auto;min-height:100dvh;display:grid;grid-template-rows:auto 1fr auto;gap:10px;padding:12px}
+  header,footer{
+    background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:10px 14px;
+    box-shadow:0 8px 24px rgba(15,23,42,.08);display:flex;align-items:center;justify-content:space-between;gap:12px
+  }
+  h1{margin:0;font-size:20px;letter-spacing:.3px}
+  .hud{display:flex;gap:14px;flex-wrap:wrap;color:var(--ui2);font-weight:700}
+  .btn{border:1px solid #94a3b8;background:#f8fafc;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}
+  .btn.primary{background:#10b981;color:#fff;border-color:#059669}
+  #game{
+    display:block;
+    width:100%;
+    /* height is controlled by JS to maintain 16:9 and retina crispness */
+    background:#a8c5df;border-radius:16px;border:1px solid #dbeafe;box-shadow:0 10px 30px rgba(2,6,23,.08);
+    touch-action:none
+  }
+  .help{font-size:14px;color:var(--ui2)}
+  .kbd{border:1px solid #cbd5e1;background:#f9fafb;border-bottom-width:3px;border-radius:6px;padding:2px 6px;font-size:12px;font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🚂 Greenport Express — Balloon Pop</h1>
+    <div class="hud">
+      <span>Score: <span id="score">0</span></span>
+      <span>Level: <span id="level">1</span></span>
+      <span>Time: <span id="time">60</span>s</span>
+      <button id="whistleBtn" class="btn">Whistle</button>
+      <button id="pauseBtn" class="btn">Pause</button>
+      <button id="muteBtn" class="btn">Mute</button>
+      <button id="restartBtn" class="btn primary">Restart</button>
+    </div>
+  </header>
+
+  <canvas id="game" width="1280" height="720" aria-label="Greenport Express game canvas"></canvas>
+
+  <footer>
+    <div class="help">
+      Splash screen: Tap/press any key to start. Aim with mouse/touch and <span class="kbd">Click/Tap</span> or <span class="kbd">Space</span> to shoot. <span class="kbd">W</span> whistles.
+    </div>
+    <div class="help">Place assets next to this file as listed above.</div>
+  </footer>
+</div>
+
+<!-- sounds -->
+<audio id="popAudio" src="balloon-pop.wav" preload="auto"></audio>
+<audio id="jackpotAudio" src="jackpot.wav" preload="auto"></audio>
+<audio id="levelupAudio" src="level-up.wav" preload="auto"></audio>
+<audio id="wh1" src="long-high-whistle.wav" preload="auto"></audio>
+<audio id="wh2" src="double-whistle.wav" preload="auto"></audio>
+<audio id="wh3" src="double-whistle-2.wav" preload="auto"></audio>
+<audio id="wh4" src="whistle-short.wav" preload="auto"></audio>
+
+<!-- continuous steam -->
+<audio id="steamSlow"   src="steam-slow.mp3"   preload="auto" loop></audio>
+<audio id="steamMedium" src="steam-medium.mp3" preload="auto" loop></audio>
+
+<script>
+/* =======================
+   CONFIG
+======================= */
+const BACKGROUND_SRC = 'background-woods.png'; // scrolling background image
+const BG_SCROLL = 36;      // px/sec base (scaled with canvas width)
+const TRACK_SCROLL = 150;  // tracks move faster
+const LEVEL_POPUP_MIN_MS = 3000;
+
+/* =======================
+   Canvas + UI (mobile scaling)
+======================= */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+function fitCanvas(){
+  const vw = Math.max(document.documentElement.clientWidth, window.innerWidth || 0);
+  const vh = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
+  const target = 16/9, aspect = vw / vh;
+
+  let cssW, cssH;
+  if (aspect > target) { cssH = vh; cssW = Math.floor(cssH * target); }
+  else { cssW = vw; cssH = Math.floor(cssW / target); }
+
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  const s = window.devicePixelRatio || 1;
+  canvas.width  = Math.floor(cssW * s);
+  canvas.height = Math.floor(cssH * s);
+}
+fitCanvas();
+new ResizeObserver(fitCanvas).observe(document.body);
+window.addEventListener('resize', fitCanvas);
+window.addEventListener('orientationchange', ()=> setTimeout(fitCanvas,150));
+document.addEventListener('visibilitychange', ()=> setTimeout(fitCanvas,150));
+
+const uiScore = document.getElementById('score');
+const uiLevel = document.getElementById('level');
+const uiTime  = document.getElementById('time');
+const pauseBtn = document.getElementById('pauseBtn');
+const muteBtn  = document.getElementById('muteBtn');
+const restartBtn = document.getElementById('restartBtn');
+const whistleBtn = document.getElementById('whistleBtn');
+
+/* =======================
+   Background image (tiling)
+======================= */
+const bgImg = new Image();
+let bgReady = false;
+bgImg.onload = ()=>{ bgReady = true; };
+bgImg.src = BACKGROUND_SRC;
+
+/* =======================
+   Game State
+======================= */
+let running=false, muted=false, audioUnlocked=false;
+let lastFrame = performance.now();
+let gs;
+
+function resetGame(toSplash=true){
+  gs = {
+    phase: toSplash ? 'splash' : 'playing', // 'splash' | 'playing' | 'milestone'
+    score:0, level:1, timeLeft:60, lastTick:performance.now(),
+    pointer:{x:canvas.width*0.4, y:canvas.height*0.55},
+    bullets:[], balloons:[], particles:[],
+    pops:[], floatTexts:[],
+    milestone500Shown:false,
+    // background offsets for seamless loop
+    bgOff:0, trackOff:0,
+    // spawns
+    rotaryChance:0.045,
+    bonus:false, bonusTimer:0,
+    shootCooldown:0,
+    // train anim
+    wheelAngle:0, waveT:0,
+    // audio/level flags
+    _steamUpgraded:false,
+    _milestoneStart:0
+  };
+  uiScore.textContent=0; uiLevel.textContent=1; uiTime.textContent=60;
+  running = !toSplash;
+  pauseBtn.textContent='Pause';
+}
+resetGame(true);
+
+/* =======================
+   Audio
+======================= */
+const popEl = document.getElementById('popAudio');
+const jackpotEl = document.getElementById('jackpotAudio'); // will be used for level-ups (swapped)
+const levelupEl = document.getElementById('levelupAudio'); // will be used for rotary pops (swapped)
+const whistleEls = [document.getElementById('wh1'),document.getElementById('wh2'),document.getElementById('wh3'),document.getElementById('wh4')];
+
+const steamSlowEl   = document.getElementById('steamSlow');
+const steamMediumEl = document.getElementById('steamMedium');
+
+let ac;
+function getAC(){ if(!ac){ try{ ac=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ ac=null; } } return ac; }
+
+async function unlockAudio(){
+  if(audioUnlocked) return;
+  const els=[popEl,jackpotEl,levelupEl,...whistleEls, steamSlowEl, steamMediumEl];
+  for(const el of els){ try{ await el.play(); el.pause(); el.currentTime=0; }catch(e){} }
+  audioUnlocked = true;
+  if(getAC() && ac.state==='suspended'){ try{ await ac.resume(); }catch(e){} }
+}
+function playAudioClone(el, rate=1, fallback){
+  if(muted) return;
+  try{ const s=el.cloneNode(); s.playbackRate=rate; s.currentTime=0; s.volume = (el===jackpotEl? 1.0 : 1.0);
+    const p=s.play(); if(p&&p.then)p.catch(()=>fallback&&fallback()); }
+  catch(e){ if(fallback) fallback(); }
+}
+function synthPop(){ if(muted||!getAC()) return;
+  const t=ac.currentTime, o=ac.createOscillator(), g=ac.createGain();
+  o.type='triangle'; o.frequency.setValueAtTime(900,t); o.frequency.exponentialRampToValueAtTime(300, t+0.08);
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.06,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+0.1);
+  o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t+0.12);
+}
+const popSound     = (rate=1)=>playAudioClone(popEl, rate, synthPop);
+
+// === SOUND SWAP ===
+// Rotary balloon pops now use level-up.wav
+function rotarySound(){ playAudioClone(levelupEl, 1); }
+// Level-ups now use jackpot.wav (loud + synth fallback)
+function levelupSound(){
+  if (muted) return;
+  try{
+    const s = jackpotEl.cloneNode();
+    s.volume = 1.0; s.currentTime = 0;
+    const p = s.play();
+    if(p && p.then) p.catch(()=>{ // fallback fanfare
+      if(!getAC()) return;
+      const t=ac.currentTime, o=ac.createOscillator(), g=ac.createGain();
+      o.type='square'; o.frequency.setValueAtTime(440,t);
+      o.frequency.linearRampToValueAtTime(880,t+0.25);
+      g.gain.value=0.001; g.gain.linearRampToValueAtTime(0.18,t+0.04);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+0.7);
+      o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t+0.75);
+    });
+  }catch(e){}
+}
+
+// Steam helpers
+function setVol(el, v){ try{ el.volume = Math.max(0, Math.min(1, v)); }catch{} }
+async function startSteam(){
+  if (muted) return;
+  setVol(steamSlowEl, 0.0); setVol(steamMediumEl, 0.0);
+  try { await steamSlowEl.play(); } catch {}
+  // fade in slow
+  let v=0; const id=setInterval(()=>{ v+=0.1; setVol(steamSlowEl, Math.min(0.35,v)); if(v>=0.35) clearInterval(id); },60);
+}
+async function switchSteamToMedium(){
+  if (muted) return;
+  try { await steamMediumEl.play(); } catch {}
+  let a=steamSlowEl.volume||0.3, b=steamMediumEl.volume||0.0;
+  const id=setInterval(()=>{
+    a-=0.04; b+=0.04;
+    setVol(steamSlowEl, Math.max(0,a));
+    setVol(steamMediumEl, Math.min(0.5,b));
+    if(a<=0 && b>=0.5) clearInterval(id);
+  },70);
+}
+function stopSteam(){ try{steamSlowEl.pause();}catch{} try{steamMediumEl.pause();}catch{} }
+
+/* =======================
+   Input (ignore during 3s level popup)
+======================= */
+function ignoreInputForLevelPopup(){ 
+  return gs.phase==='milestone' && (performance.now()-gs._milestoneStart) < LEVEL_POPUP_MIN_MS;
+}
+function toCoords(e){ const r=canvas.getBoundingClientRect(); const s=canvas.width/r.width; return {x:(e.clientX-r.left)*s,y:(e.clientY-r.top)*s}; }
+canvas.addEventListener('pointermove',e=>{ if(ignoreInputForLevelPopup()) return; gs.pointer=toCoords(e); });
+canvas.addEventListener('pointerdown',async e=>{
+  if(gs.phase==='splash'){ await startGame(); return; }
+  if(ignoreInputForLevelPopup()) return;
+  if(gs.phase==='milestone'){ resumeAfterMilestone(); return; }
+  gs.pointer=toCoords(e); shoot();
+});
+window.addEventListener('keydown',async e=>{
+  if(gs.phase==='splash'){ await startGame(); return; }
+  if(ignoreInputForLevelPopup()) return;
+  if(gs.phase==='milestone'){ resumeAfterMilestone(); return; }
+  if(e.code==='Space'){ shoot(); }
+  if(e.key.toLowerCase()==='p'){ togglePause(); }
+  if(e.key.toLowerCase()==='m'){ toggleMute(); }
+  if(e.key.toLowerCase()==='w'){ playWhistle(); }
+});
+pauseBtn.onclick=()=>{ if(gs.phase!=='playing') return; running=!running; pauseBtn.textContent=running?'Pause':'Resume'; if(running) lastFrame=performance.now(); };
+muteBtn.onclick =()=>{
+  muted=!muted; muteBtn.textContent=muted?'Unmute':'Mute';
+  if(muted) stopSteam(); else startSteam();
+};
+restartBtn.onclick=()=>resetGame(true);
+
+/* =======================
+   Game flow
+======================= */
+async function startGame(){ await unlockAudio(); gs.phase='playing'; running=true; lastFrame=performance.now(); playWhistle(); startSteam(); }
+function resumeAfterMilestone(){
+  if((performance.now()-gs._milestoneStart) < LEVEL_POPUP_MIN_MS) return; // enforce 3s
+  gs.phase='playing'; running=true; lastFrame=performance.now();
+}
+function togglePause(){ if(gs.phase!=='playing') return; running=!running; pauseBtn.textContent=running?'Pause':'Resume'; if(running) lastFrame=performance.now(); }
+
+/* =======================
+   Whistle
+======================= */
+let lastWhistleAt=0;
+function synthWhistle(){ if(muted||!getAC()) return;
+  const t=ac.currentTime, o=ac.createOscillator(), g=ac.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(700,t); o.frequency.linearRampToValueAtTime(1200,t+0.5);
+  const l=ac.createOscillator(), lg=ac.createGain(); l.frequency.value=6; lg.gain.value=20; l.connect(lg); lg.connect(o.frequency);
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.12,t+0.03); g.gain.exponentialRampToValueAtTime(0.0001,t+0.8);
+  o.connect(g); g.connect(ac.destination); o.start(t); l.start(t); o.stop(t+0.8); l.stop(t+0.8);
+}
+function playWhistle(){
+  const now=performance.now(); if(now-lastWhistleAt<1000) return; lastWhistleAt=now;
+  if(muted) return;
+  const pick = whistleEls[Math.floor(Math.random()*whistleEls.length)];
+  playAudioClone(pick,1,synthWhistle);
+}
+
+/* =======================
+   Helpers
+======================= */
+function trainPos(){
+  const w=canvas.width,h=canvas.height, baseY=h*0.74;
+  const x=w*0.18;
+  const cannonX=x + w*0.14; const cannonY=baseY - h*0.11;
+  return {x, y:baseY, cannonX, cannonY};
+}
+function shoot(){
+  const now=performance.now(); if(now<gs.shootCooldown) return;
+  gs.shootCooldown = now + 110;
+  const t=trainPos(), ang=Math.atan2(gs.pointer.y - t.cannonY, gs.pointer.x - t.cannonX);
+  const sp=canvas.height*0.63;
+  gs.bullets.push({x:t.cannonX, y:t.cannonY, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp, life:0});
+  if(getAC()){ const tt=ac.currentTime, o=ac.createOscillator(), g=ac.createGain();
+    o.type='square'; o.frequency.value=260; g.gain.setValueAtTime(0,tt); g.gain.linearRampToValueAtTime(0.05,tt+0.02); g.gain.exponentialRampToValueAtTime(0.0001,tt+0.09);
+    o.connect(g); g.connect(ac.destination); o.start(tt); o.stop(tt+0.1);
+  }
+}
+function burst(x,y,color,count=16){
+  for(let i=0;i<count;i++){
+    const a=Math.random()*Math.PI*2, s=(Math.random()*0.5+0.5)*(canvas.height*0.25);
+    gs.particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:0,max:0.5+Math.random()*0.5,color});
+  }
+}
+function addPopAnim(x,y,color){ gs.pops.push({x,y,color,life:0,max:0.25,startR:canvas.height*0.01,endR:canvas.height*0.06,spikes:12}); }
+function addFloatText(x,y,text,color){ gs.floatTexts.push({x,y,text,color,life:0,max:0.9,vy:-canvas.height*0.15}); }
+
+/* =======================
+   Balloons
+======================= */
+function spawnBalloon(){
+  const h=canvas.height,w=canvas.width;
+  const isRotary = Math.random() < gs.rotaryChance;
+  const r = isRotary ? h*0.04 : h*(0.022 + Math.random()*0.02);
+  const x = Math.random()*(w*0.85 - w*0.1) + w*0.1;
+  const vy = -(h*0.06 + Math.random()*h*0.06 + gs.level*0.003*h);
+  const hue = Math.floor(Math.random()*360);
+  gs.balloons.push({x, y:h + r + Math.random()*h*0.2, vy, r, hue, rotary:isRotary, wob:Math.random()*Math.PI*2});
+}
+
+/* =======================
+   UPDATE
+======================= */
+function update(dt){
+  const now=performance.now();
+  if(now-gs.lastTick>=1000 && running){
+    gs.lastTick=now; gs.timeLeft=Math.max(0, gs.timeLeft-1); uiTime.textContent=gs.timeLeft;
+    if(gs.timeLeft===0){
+      if(gs.level>=5){ running=false; } else{
+        gs.level++; uiLevel.textContent=gs.level; gs.timeLeft=60; uiTime.textContent=60;
+        // level-up: play jackpot (swapped), show 3s popup
+        levelupSound();
+        gs.phase='milestone'; running=false; gs._milestoneStart = performance.now();
+      }
+    }
+  }
+  if(gs.bonus){ gs.bonusTimer-=dt; if(gs.bonusTimer<=0){ gs.bonus=false; gs.rotaryChance=0.045; } }
+
+  const w=canvas.width, scale = w/1280;
+  gs.bgOff   = (gs.bgOff   + BG_SCROLL    * scale * dt) % w;
+  gs.trackOff= (gs.trackOff+ TRACK_SCROLL * scale * dt) % w;
+
+  // spawn balloons
+  const rate = gs.bonus ? 0.028 : (0.012 + gs.level*0.0018);
+  if(Math.random() < rate*(dt*60)) spawnBalloon();
+
+  // bullets
+  gs.bullets.forEach(b=>{ b.x+=b.vx*dt; b.y+=b.vy*dt; b.life+=dt; });
+  gs.bullets = gs.bullets.filter(b=> b.life<1.5 && b.x>-60 && b.x<canvas.width+60 && b.y>-60 && b.y<canvas.height+60);
+
+  // balloons
+  gs.balloons.forEach(b=>{ b.wob+=dt*3; b.x += Math.sin(b.wob)*(canvas.width*0.02*dt); b.y += b.vy*dt; });
+  gs.balloons = gs.balloons.filter(b=> b.y + b.r > -40);
+
+  // collisions + scoring (10 regular, 50 rotary)
+  for(let i=gs.balloons.length-1;i>=0;i--){
+    const bl=gs.balloons[i];
+    for(let j=gs.bullets.length-1;j>=0;j--){
+      const bu=gs.bullets[j]; const dx=bl.x-bu.x, dy=bl.y-bu.y;
+      if(dx*dx+dy*dy < bl.r*bl.r){
+        gs.bullets.splice(j,1); gs.balloons.splice(i,1);
+        const pts = bl.rotary ? 50 : 10;
+        gs.score += pts; uiScore.textContent=gs.score;
+        // SWAP: rotary uses level-up.wav
+        if(bl.rotary) rotarySound(); else popSound(1);
+        const col = bl.rotary ? `hsl(40 95% 50%)` : `hsl(${bl.hue} 85% 60%)`;
+        burst(bl.x, bl.y, col, bl.rotary?30:16);
+        addPopAnim(bl.x, bl.y, col);
+        addFloatText(bl.x, bl.y - bl.r*0.2, `+${pts}`, col);
+
+        // Steam upgrade & milestone overlay at 500 points (3s min)
+        if(gs.score >= 500 && !gs._steamUpgraded){
+          gs._steamUpgraded = true;
+          switchSteamToMedium();
+          gs.phase='milestone'; running=false; gs._milestoneStart = performance.now();
+          // Also play level-up sound (jackpot.wav) to celebrate 500
+          levelupSound();
+        }
+        break;
+      }
+    }
+  }
+
+  // confetti, pop anims, float texts
+  gs.particles.forEach(p=>{ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=1-1.6*dt; p.vy = p.vy*(1-1.8*dt)+300*dt; p.life+=dt; });
+  gs.particles = gs.particles.filter(p=> p.life<p.max);
+  gs.pops.forEach(p=>{ p.life+=dt; }); gs.pops = gs.pops.filter(p=> p.life<p.max);
+  gs.floatTexts.forEach(ft=>{ ft.life+=dt; ft.y+=ft.vy*dt; }); gs.floatTexts = gs.floatTexts.filter(ft=> ft.life<ft.max);
+
+  // train anim params
+  gs.wheelAngle += dt * 8;
+  gs.waveT += dt * 3;
+}
+
+/* =======================
+   DRAW
+======================= */
+function draw(){
+  const w=canvas.width,h=canvas.height;
+
+  // 1) background image tiled seamlessly
+  if(bgReady){
+    const imgW = h * (bgImg.width/bgImg.height); // scale to canvas height
+    const tiles = Math.ceil(w/imgW)+2;
+    for(let i=0;i<tiles;i++){
+      const x = - (gs.bgOff % imgW) + i*imgW;
+      ctx.drawImage(bgImg, x, 0, imgW, h);
+    }
+  } else {
+    // gradient fallback
+    const g=ctx.createLinearGradient(0,0,0,h); g.addColorStop(0,'#bcd3ea'); g.addColorStop(1,'#8bb7d8');
+    ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+  }
+
+  // 2) tracks
+  drawTracks(gs.trackOff);
+
+  // 3) balloons
+  gs.balloons.forEach(b=>{
+    if(b.rotary){ drawRotaryBalloon(b.x,b.y,b.r); }
+    else drawBalloon(b.x,b.y,b.r, `hsl(${b.hue} 85% 60%)`);
+  });
+
+  // 4) train (vector; stationary but animated)
+  drawTrainVectorAnimated();
+
+  // bullets
+  ctx.fillStyle=getVar('--train-dark');
+  gs.bullets.forEach(b=>{ ctx.beginPath(); ctx.arc(b.x,b.y,h*0.006,0,Math.PI*2); ctx.fill(); });
+
+  // confetti
+  gs.particles.forEach(p=>{
+    const a=1-(p.life/p.max); ctx.globalAlpha=a; ctx.fillStyle=p.color; ctx.fillRect(p.x,p.y,h*0.006,h*0.006); ctx.globalAlpha=1;
+  });
+
+  // pop ring/starburst
+  gs.pops.forEach(p=>{
+    const t = p.life / p.max;
+    const r = p.startR + (p.endR - p.startR) * t;
+    ctx.save();
+    ctx.globalAlpha = 0.9 * (1 - t);
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = Math.max(2, h*0.004*(1-t));
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = p.color;
+    const spikes = 12;
+    for(let i=0;i<spikes;i++){
+      const a = (i/spikes)*Math.PI*2;
+      const len = r * (0.5 + 0.6*(1-t));
+      ctx.beginPath();
+      ctx.moveTo(p.x + Math.cos(a)* (r*0.6), p.y + Math.sin(a)* (r*0.6));
+      ctx.lineTo(p.x + Math.cos(a+0.12)* (r*0.6 + len), p.y + Math.sin(a+0.12)* (r*0.6 + len));
+      ctx.lineTo(p.x + Math.cos(a-0.12)* (r*0.6 + len), p.y + Math.sin(a-0.12)* (r*0.6 + len));
+      ctx.closePath(); ctx.globalAlpha = 0.7*(1-t); ctx.fill();
+    }
+    ctx.restore();
+  });
+
+  // floating score labels
+  gs.floatTexts.forEach(ft=>{
+    const t = ft.life / ft.max;
+    ctx.save();
+    ctx.globalAlpha = 1 - t;
+    ctx.fillStyle = '#000'; ctx.font = `${Math.round(h*0.05)}px/1.1 sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline='middle';
+    ctx.fillText(ft.text, ft.x+2, ft.y+2);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(ft.text, ft.x, ft.y);
+    ctx.restore();
+  });
+
+  // banner & overlays
+  banner('THE GREENPORT EXPRESS', getVar('--brand-red'));
+  if(gs.phase==='splash'){ overlay(0.65); drawSplash(); }
+  if(gs.phase==='milestone'){ overlay(0.6); drawMilestone(); }
+  if(gs.phase==='playing' && !running){ overlay(0.45); titleText('Paused'); subText('Press Restart or P to resume'); }
+}
+
 /* =======================
    TRACKS + VISUAL HELPERS + TRAIN
 ======================= */
@@ -51,7 +553,7 @@ function roundRect(x,y,w,h,r,fill=true){
 
 function drawTracks(off){
   const w=canvas.width,h=canvas.height;
-  const y=h*0.78;
+  const y=h*0.78; // upper rail centerline
   ctx.fillStyle='#b59d79'; ctx.fillRect(0, y-h*0.02, w, h*0.12);
   ctx.strokeStyle='#2f2f2f'; ctx.lineWidth=h*0.012;
   ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.moveTo(0,y+h*0.06); ctx.lineTo(w,y+h*0.06); ctx.stroke();
@@ -59,35 +561,162 @@ function drawTracks(off){
   for(let x=x0;x<w+step;x+=step){ ctx.fillStyle='#704a1d'; ctx.fillRect(x,y-h*0.006,h*0.024,h*0.07); }
 }
 
-/* (train, balloons, wheels code unchanged — keep existing definitions) */
+function drawBalloon(x,y,r,color){
+  ctx.save(); ctx.fillStyle=color;
+  ctx.beginPath(); ctx.ellipse(x,y,r*0.9,r,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,0.15)'; ctx.beginPath(); ctx.moveTo(x,y+r*0.9); ctx.lineTo(x-r*0.12,y+r*1.08); ctx.lineTo(x+r*0.12,y+r*1.08); ctx.closePath(); ctx.fill();
+  ctx.globalAlpha=0.25; ctx.fillStyle='#fff'; ctx.beginPath(); ctx.ellipse(x-r*0.3,y-r*0.3,r*0.25,r*0.15,-0.6,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
+  ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=Math.max(1,r*0.06);
+  ctx.beginPath(); ctx.moveTo(x,y+r*1.05); ctx.quadraticCurveTo(x+r*0.2, y+r*1.4, x+r*0.05, y+r*1.8); ctx.stroke();
+  ctx.restore();
+}
+function drawRotaryBalloon(x,y,r){
+  drawBalloon(x,y,r,'hsl(40 95% 55%)');
+  drawRotaryCog(x, y, r*0.55, getVar('--train-dark'), getVar('--rotary-gold'));
+}
+function drawRotaryCog(cx,cy,R, stroke='#1f2937', fill='#f59e0b'){
+  const teeth=16; const inner=R*0.55, ring=R*0.82;
+  ctx.save();
+  ctx.fillStyle=fill; ctx.strokeStyle=stroke; ctx.lineWidth=R*0.08;
+  ctx.beginPath();
+  for(let i=0;i<teeth;i++){
+    const a=(i/teeth)*Math.PI*2, a2=a + Math.PI*2/teeth*0.6;
+    const r1=ring, r2=R;
+    if(i===0) ctx.moveTo(cx+Math.cos(a)*r1, cy+Math.sin(a)*r1);
+    ctx.lineTo(cx+Math.cos(a)*r2, cy+Math.sin(a)*r2);
+    ctx.lineTo(cx+Math.cos(a+0.12)*r2, cy+Math.sin(a+0.12)*r2);
+    ctx.lineTo(cx+Math.cos(a+0.12)*r1, cy+Math.sin(a+0.12)*r1);
+  }
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx,cy,inner,0,Math.PI*2); ctx.fillStyle='#fff3cd'; ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx,cy,inner*0.28,0,Math.PI*2); ctx.fillStyle=fill; ctx.fill();
+  ctx.restore();
+}
+
+function drawTrainVectorAnimated(){
+  const {x,y,cannonX,cannonY}=trainPos(); const w=canvas.width,h=canvas.height;
+  const bob = Math.sin(performance.now()/600)*h*0.004;
+
+  // two passenger cars + engine
+  drawCar(x - w*0.16, y + bob, w, h, 1);
+  drawCar(x - w*0.01,  y + bob, w, h, 2);
+  drawEngine(x + w*0.13, y + bob, w, h);
+
+  // cannon
+  const ang=Math.atan2(gs.pointer.y-cannonY, gs.pointer.x-cannonX);
+  ctx.save(); ctx.translate(cannonX, cannonY+bob); ctx.rotate(ang);
+  ctx.fillStyle=getVar('--train-dark'); ctx.fillRect(0, -h*0.01, w*0.08, h*0.02); ctx.restore();
+}
+function drawWheel(cx,
+function drawWheel(cx,cy,r){
+  ctx.fillStyle=getVar('--train-dark'); ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#a3b3c4'; ctx.beginPath(); ctx.arc(cx,cy,r*0.45,0,Math.PI*2); ctx.fill();
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(gs.wheelAngle);
+  ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=r*0.18;
+  for(let i=0;i<4;i++){ ctx.rotate(Math.PI/2); ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(r*0.9,0); ctx.stroke(); }
+  ctx.restore();
+}
+function drawWindowsCar(x,y,w,h,num=4){
+  const ww = w*0.04, wh = h*0.05, gap = w*0.025;
+  let start = x - w*0.035 - (num-1)*(ww+gap)/2;
+  for(let i=0;i<num;i++){
+    const wx = start + i*(ww+gap), wy = y - h*0.11;
+    ctx.fillStyle='#93c5fd'; ctx.fillRect(wx, wy, ww, wh);
+    // passenger head
+    ctx.fillStyle='#ffd9b3'; ctx.beginPath(); ctx.arc(wx+ww*0.5, wy+wh*0.6, Math.min(ww,wh)*0.28, 0, Math.PI*2); ctx.fill();
+    // waving arm
+    const armLen = wh*0.9, sway = Math.sin(gs.waveT + i)*0.25;
+    ctx.save(); ctx.translate(wx+ww*0.5, wy+wh*0.8); ctx.rotate(-0.6 + sway);
+    ctx.strokeStyle='#ffd9b3'; ctx.lineWidth=wh*0.15; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(armLen,0); ctx.stroke();
+    ctx.restore();
+  }
+}
+function drawCar(cx, cy, w, h, idx){
+  ctx.fillStyle='#1f5fbf';
+  ctx.fillRect(cx - w*0.10, cy - h*0.10, w*0.22, h*0.08);
+  ctx.fillStyle=getVar('--train-yellow'); 
+  ctx.fillRect(cx - w*0.105, cy - h*0.102, w*0.23, h*0.012);
+  ctx.fillRect(cx - w*0.105, cy - h*0.022,  w*0.23, h*0.012);
+  drawWindowsCar(cx, cy, w, h, 4);
+  const R = h*0.035;
+  drawWheel(cx - w*0.06, cy, R);
+  drawWheel(cx + w*0.00, cy, R);
+  drawWheel(cx + w*0.06, cy, R);
+}
+function drawEngine(cx, cy, w, h){
+  // tender
+  ctx.fillStyle='#1f5fbf';
+  ctx.fillRect(cx - w*0.19, cy - h*0.10, w*0.11, h*0.08);
+  ctx.fillStyle=getVar('--train-yellow');
+  ctx.fillRect(cx - w*0.192, cy - h*0.102, w*0.114, h*0.012);
+  ctx.fillRect(cx - w*0.192, cy - h*0.022, w*0.114, h*0.012);
+
+  // engine body
+  ctx.fillStyle=getVar('--train-blue');
+  ctx.fillRect(cx - w*0.06, cy - h*0.14, w*0.18, h*0.11);
+
+  // windows
+  ctx.fillStyle='#93c5fd';
+  ctx.fillRect(cx - w*0.05, cy - h*0.13, w*0.05, h*0.06);
+  ctx.fillRect(cx + w*0.01, cy - h*0.13, w*0.05, h*0.06);
+
+  // centered name
+  ctx.fillStyle='#ffffff';
+  ctx.font=`${Math.round(h*0.03)}px/1.1 sans-serif`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('GREENPORT', cx + w*0.03, cy - h*0.065);
+  ctx.fillText('EXPRESS',   cx + w*0.03, cy - h*0.035);
+
+  // trims
+  ctx.fillStyle=getVar('--train-yellow');
+  ctx.fillRect(cx - w*0.064, cy - h*0.15, w*0.19, h*0.015);
+  ctx.fillRect(cx - w*0.064, cy - h*0.03, w*0.19, h*0.012);
+
+  // boiler + stack
+  ctx.fillStyle='#1f2937';
+  roundRect(cx + w*0.06, cy - h*0.18, w*0.11, h*0.09, 12, true);
+  ctx.fillStyle=getVar('--train-dark');
+  ctx.fillRect(cx + w*0.145, cy - h*0.2, w*0.025, h*0.06);
+
+  // wheels
+  const R = h*0.035;
+  drawWheel(cx - w*0.03, cy, R);
+  drawWheel(cx + w*0.03, cy, R);
+  drawWheel(cx + w*0.09, cy, R);
+}
 
 /* =======================
-   MAIN LOOP
+   MAIN LOOP (with 3s level-up lock)
 ======================= */
 function loop(ts){
   const dt = Math.min(0.033, (ts-lastFrame)/1000); lastFrame=ts;
+
+  // Update only when actively playing
   if(gs.phase==='playing' && running) update(dt);
 
+  // Always draw
   draw();
 
-  // enforce level-up popup stay 3 seconds
+  // Enforce level-up / milestone popup stays for 3 seconds minimum
   if(gs.phase==='milestone'){
-    if(!gs._milestoneStart) gs._milestoneStart=performance.now();
-    if(performance.now()-gs._milestoneStart<3000){
-      // ignore input
+    if(!gs._milestoneStart) gs._milestoneStart = performance.now();
+    const elapsed = performance.now() - gs._milestoneStart;
+
+    // During lockout, ignore clicks/keys by temporarily disabling handlers
+    if(elapsed < 3000){
+      canvas.onclick = null;
+      window.onkeydown = null;
     } else {
-      // after 3s allow resume
+      // After 3s allow dismiss (one-time wire-up)
       canvas.onclick = resumeAfterMilestone;
       window.onkeydown = resumeAfterMilestone;
     }
+  } else {
+    // When not in milestone, ensure default handlers aren’t blocked
+    canvas.onclick = null;
+    window.onkeydown = null;
   }
+
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
-
-/* =======================
-   SOUND SWAP FIX
-======================= */
-// swap usage: jackpot for level-up, level-up for Rotary balloon
-function jackpotSound(){ playAudioClone(levelupEl,1); } // <-- now plays level-up.wav
-const levelupSound = ()=>playAudioClone(jackpotEl,1);   // <-- now plays jackpot.wav
