@@ -608,7 +608,7 @@ function drawTrainVectorAnimated(){
   ctx.fillStyle=getVar('--train-dark'); ctx.fillRect(0, -h*0.01, w*0.08, h*0.02); ctx.restore();
 }
 function drawWheel(cx,
-function drawWheel(cx,cy,r){
+                   function drawWheel(cx,cy,r){
   ctx.fillStyle=getVar('--train-dark'); ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
   ctx.fillStyle='#a3b3c4'; ctx.beginPath(); ctx.arc(cx,cy,r*0.45,0,Math.PI*2); ctx.fill();
   ctx.save(); ctx.translate(cx,cy); ctx.rotate(gs.wheelAngle);
@@ -616,6 +616,7 @@ function drawWheel(cx,cy,r){
   for(let i=0;i<4;i++){ ctx.rotate(Math.PI/2); ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(r*0.9,0); ctx.stroke(); }
   ctx.restore();
 }
+
 function drawWindowsCar(x,y,w,h,num=4){
   const ww = w*0.04, wh = h*0.05, gap = w*0.025;
   let start = x - w*0.035 - (num-1)*(ww+gap)/2;
@@ -631,6 +632,7 @@ function drawWindowsCar(x,y,w,h,num=4){
     ctx.restore();
   }
 }
+
 function drawCar(cx, cy, w, h, idx){
   ctx.fillStyle='#1f5fbf';
   ctx.fillRect(cx - w*0.10, cy - h*0.10, w*0.22, h*0.08);
@@ -643,6 +645,7 @@ function drawCar(cx, cy, w, h, idx){
   drawWheel(cx + w*0.00, cy, R);
   drawWheel(cx + w*0.06, cy, R);
 }
+
 function drawEngine(cx, cy, w, h){
   // tender
   ctx.fillStyle='#1f5fbf';
@@ -686,7 +689,7 @@ function drawEngine(cx, cy, w, h){
 }
 
 /* =======================
-   MAIN LOOP (with 3s level-up lock)
+   MAIN LOOP (with 3s level-up lockout)
 ======================= */
 function loop(ts){
   const dt = Math.min(0.033, (ts-lastFrame)/1000); lastFrame=ts;
@@ -720,3 +723,11 @@ function loop(ts){
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
+
+/* =======================
+   SOUND SWAP OVERRIDE
+   - jackpotSound(): play level-up.wav (now for level-ups)
+   - levelupSound(): play jackpot.wav (now for Rotary pops)
+======================= */
+function jackpotSound(){ playAudioClone(levelupEl, 1); } // level-up.wav on level-ups
+const levelupSound = ()=>playAudioClone(jackpotEl, 1);   // jackpot.wav on Rotary balloon pop
