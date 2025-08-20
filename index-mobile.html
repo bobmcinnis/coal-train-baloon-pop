@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Greenport Express – Mobile</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: black;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    canvas {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      /* will preserve aspect ratio and remain sharp via JS scaling */
+    }
+    .controls {
+      position: absolute;
+      bottom: 2%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 95%;
+      display: flex;
+      justify-content: space-around;
+      z-index: 10;
+    }
+    .btn {
+      background: rgba(255,255,255,0.15);
+      color: white;
+      padding: 12px 18px;
+      border-radius: 14px;
+      font-size: 1.3em;
+      font-weight: bold;
+      user-select: none;
+    }
+    .btn:active {
+      background: rgba(255,255,255,0.3);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Touch controls -->
+  <div class="controls">
+    <div class="btn" ontouchstart="moveLeft()" ontouchend="stopMove()">◀</div>
+    <div class="btn" ontouchstart="shoot()">🔥</div>
+    <div class="btn" ontouchstart="moveRight()" ontouchend="stopMove()">▶</div>
+  </div>
+
+  <!-- Load the same game logic from your GitHub Pages site -->
+  <script src="https://bobmcinnis.github.io/coal-train-baloon-pop/index.js"></script>
+  <!-- If your main script file is named differently (e.g. game.js), just replace the filename above accordingly. -->
+
+  <script>
+    window.addEventListener('load', () => {
+      // Hook mobile touch into your main script's movement/shoot logic
+      window.moveLeft = () => window.handleMove && window.handleMove('left');
+      window.moveRight = () => window.handleMove && window.handleMove('right');
+      window.stopMove = () => window.stopMove && window.stopMove();
+      window.shoot = () => window.handleShoot && window.handleShoot();
+    });
+  </script>
+</body>
+</html>
