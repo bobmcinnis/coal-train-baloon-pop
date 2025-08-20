@@ -669,12 +669,15 @@ function drawEngine(cx, cy, w, h){
   ctx.fillRect(cx + w*0.01, cy - h*0.13, w*0.05, h*0.06);
 
   // centered name
-  ctx.fillStyle='#ffffff';
-  ctx.font=`${Math.round(h*0.03)}px/1.1 sans-serif`;
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText('GREENPORT', cx + w*0.03, cy - h*0.065);
-  ctx.fillText('EXPRESS',   cx + w*0.03, cy - h*0.035);
 
+ctx.fillStyle = "#fff";
+// smaller font (relative to train height), bold for readability
+ctx.font = `${h * 0.035}px Arial Black`;
+ctx.textAlign = "center";
+ctx.fillText("Greenport Express", trainX + trainWidth / 2, trainY + trainHeight * 0.2);
+  
+
+  
   // trims
   ctx.fillStyle=getVar('--train-yellow');
   ctx.fillRect(cx - w*0.064, cy - h*0.15, w*0.19, h*0.015);
