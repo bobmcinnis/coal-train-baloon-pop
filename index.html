@@ -670,11 +670,11 @@ function drawEngine(cx, cy, w, h){
 
   // centered name
 
-ctx.fillStyle = "#fff";
-// smaller font (relative to train height), bold for readability
-ctx.font = `${h * 0.035}px Arial Black`;
-ctx.textAlign = "center";
-ctx.fillText("Greenport Express", trainX + trainWidth / 2, trainY + trainHeight * 0.2);
+  ctx.fillStyle='#ffffff';
+  ctx.font=`${Math.round(h*0.03)}px/1.1 sans-serif`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('GREENPORT', cx + w*0.03, cy - h*0.065);
+  ctx.fillText('EXPRESS',   cx + w*0.03, cy - h*0.035);
   
 
   
