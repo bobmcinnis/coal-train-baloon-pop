@@ -3,46 +3,82 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Greenport Express</title>
+  <title>Train Cannon Game</title>
   <style>
     :root {
-      --train-dark: #333;
-      --train-body: #666;
-      --train-light: #999;
-      --accent: #2ecc71;
+      --train-dark: #3b2e2a;
+      --train-light: #c4a484;
     }
-    body, html {
+
+    body {
       margin: 0;
-      padding: 0;
-      overflow: hidden;
-      height: 100%;
       background: black;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
     }
+
     canvas {
       display: block;
       width: 100%;
       height: 100%;
-      touch-action: none;
+      max-width: 100vw;
+      max-height: 100vh;
     }
+
+    #controls {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      z-index: 10;
+    }
+
+    .btn {
+      background: rgba(255,255,255,0.8);
+      border: none;
+      border-radius: 10px;
+      padding: 10px 20px;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
     #levelUpPopup {
       position: absolute;
-      top: 50%;
+      top: 20%;
       left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(0, 0, 0, 0.8);
-      color: white;
-      font-size: 2em;
+      transform: translateX(-50%);
       padding: 20px 40px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      font-size: 28px;
+      font-weight: bold;
       border-radius: 12px;
       display: none;
-      z-index: 1000;
-      text-align: center;
+      z-index: 20;
     }
   </style>
 </head>
 <body>
   <canvas id="gameCanvas"></canvas>
-  <div id="levelUpPopup">Level Up!</div>
+
+  <div id="controls">
+    <button class="btn" id="btnLeft">◀</button>
+    <button class="btn" id="btnShoot">⦿</button>
+    <button class="btn" id="btnRight">▶</button>
+  </div>
+
+  <div id="levelUpPopup">LEVEL UP!</div>
+
+  <audio id="steamSlow" src="steam-slow.mp3" loop></audio>
+  <audio id="steamMedium" src="steam-medium.mp3" loop></audio>
+  <audio id="jackpotSound" src="level-up.wav"></audio>
+  <audio id="levelUpSound" src="jackpot.wav"></audio>
+
   <script>
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
@@ -54,64 +90,133 @@
     window.addEventListener("resize", resizeCanvas);
     resizeCanvas();
 
-    // Game state
-    let gs = {
+    // game state
+    const gs = {
+      pointer: {x: 0, y: 0},
+      projectiles: [],
+      targets: [],
       score: 0,
       level: 1,
-      pointer: {x: 0, y: 0},
-      backgroundX: 0,
+      lastLevelUp: 0
     };
 
-    // Sounds
-    const steamSlow = new Audio("steam-slow.mp3");
-    const steamMedium = new Audio("steam-medium.mp3");
-    const levelUpSound = new Audio("jackpot.wav"); // swapped
-    const jackpotSound = new Audio("level-up.wav"); // swapped
-    steamSlow.loop = true;
-    steamMedium.loop = true;
-    steamSlow.volume = 0.4;
-    steamMedium.volume = 0.4;
+    // sounds
+    const steamSlow = document.getElementById("steamSlow");
+    const steamMedium = document.getElementById("steamMedium");
+    const jackpotSound = document.getElementById("jackpotSound");
+    const levelUpSound = document.getElementById("levelUpSound");
+
     steamSlow.play();
 
-    // Background
-    const bgImg = new Image();
-    bgImg.src = "background-woods.png";
+    function updateSteam() {
+      if (gs.score >= 500) {
+        if (!steamMedium.paused) return;
+        steamSlow.pause();
+        steamMedium.play();
+      }
+    }
 
+    // background scrolling
+    const bg = new Image();
+    bg.src = "background-woods.png";
+    let bgX = 0;
     function drawBackground() {
-      if (!bgImg.complete) return;
-      const bgWidth = bgImg.width;
-      const bgHeight = bgImg.height;
-      const scale = canvas.height / bgHeight;
-      const scaledWidth = bgWidth * scale;
-      gs.backgroundX -= 2;
-      if (gs.backgroundX <= -scaledWidth) gs.backgroundX = 0;
-      ctx.drawImage(bgImg, gs.backgroundX, 0, scaledWidth, canvas.height);
-      ctx.drawImage(bgImg, gs.backgroundX + scaledWidth, 0, scaledWidth, canvas.height);
+      const scale = canvas.height / bg.height;
+      const width = bg.width * scale;
+      bgX -= 2;
+      if (bgX <= -width) bgX = 0;
+      ctx.drawImage(bg, bgX, 0, width, canvas.height);
+      ctx.drawImage(bg, bgX + width, 0, width, canvas.height);
+    }
+    // projectiles + targets
+    function shoot() {
+      gs.projectiles.push({x: cannonX, y: cannonY, vx: 8, vy: 0});
     }
 
-    // Handle pointer
-    canvas.addEventListener("pointermove", e => {
-      gs.pointer.x = e.clientX;
-      gs.pointer.y = e.clientY;
-    });
-
-    // Show Level Up Popup
-    function showLevelUpPopup() {
-      const popup = document.getElementById("levelUpPopup");
-      popup.style.display = "block";
-      setTimeout(() => {
-        popup.style.display = "none";
-      }, 3000); // stays visible 3 seconds
+    function updateProjectiles() {
+      for (let p of gs.projectiles) {
+        p.x += p.vx;
+        p.y += p.vy;
+      }
+      gs.projectiles = gs.projectiles.filter(p => p.x < canvas.width && p.y > 0 && p.y < canvas.height);
     }
-    // Wheels + Train
-    function drawWheel(cx, cy, r) {
+
+    function drawProjectiles() {
+      ctx.fillStyle = "yellow";
+      for (let p of gs.projectiles) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 5, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    function spawnTarget() {
+      gs.targets.push({
+        x: canvas.width,
+        y: Math.random() * (canvas.height * 0.5),
+        r: 20,
+        hit: false
+      });
+    }
+
+    function updateTargets() {
+      for (let t of gs.targets) {
+        t.x -= 3;
+        for (let p of gs.projectiles) {
+          const dx = p.x - t.x, dy = p.y - t.y;
+          if (!t.hit && Math.sqrt(dx*dx + dy*dy) < t.r+5) {
+            t.hit = true;
+            gs.score += 100;
+            updateSteam();
+            if (gs.score % 500 === 0) {
+              showLevelUp();
+            }
+          }
+        }
+      }
+      gs.targets = gs.targets.filter(t => t.x > -50 && !t.hit);
+    }
+
+    function drawTargets() {
+      ctx.fillStyle = "red";
+      for (let t of gs.targets) {
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.r, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    // train + cannon
+    const cannonY = canvas.height * 0.75;
+    const cannonX = canvas.width * 0.2;
+    let frame = 0;
+
+    function drawTrain() {
+      const w = canvas.width, h = canvas.height;
+      const bob = Math.sin(frame/20) * 2;
+
+      // body
+      ctx.fillStyle = getVar("--train-light");
+      ctx.fillRect(cannonX-50, cannonY-40+bob, 100, 40);
+
+      // wheels
+      drawWheel(cannonX-35, cannonY+bob, 15, frame);
+      drawWheel(cannonX+35, cannonY+bob, 15, frame);
+
+      // cannon
+      const ang = Math.atan2(gs.pointer.y-cannonY, gs.pointer.x-cannonX);
+      ctx.save();
+      ctx.translate(cannonX, cannonY+bob);
+      ctx.rotate(ang);
+      ctx.fillStyle = getVar("--train-dark");
+      ctx.fillRect(0, -h*0.01, w*0.08, h*0.02);
+      ctx.restore();
+    }
+
+    function drawWheel(cx, cy, r, rot) {
       ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fillStyle = getVar('--train-dark');
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * 0.6, 0, Math.PI * 2);
-      ctx.fillStyle = getVar('--train-light');
+      ctx.arc(cx, cy, r, 0, Math.PI*2);
+      ctx.fillStyle = getVar("--train-dark");
       ctx.fill();
     }
 
@@ -119,57 +224,51 @@
       return getComputedStyle(document.documentElement).getPropertyValue(v);
     }
 
-    function drawTrain() {
-      const w = canvas.width;
-      const h = canvas.height;
-      const baseY = h * 0.7;
-
-      // body
-      ctx.fillStyle = getVar('--train-body');
-      ctx.fillRect(w * 0.1, baseY - h * 0.1, w * 0.3, h * 0.1);
-
-      // cabin
-      ctx.fillStyle = getVar('--train-dark');
-      ctx.fillRect(w * 0.35, baseY - h * 0.2, w * 0.15, h * 0.2);
-
-      // wheels
-      drawWheel(w * 0.15, baseY, h * 0.05);
-      drawWheel(w * 0.3, baseY, h * 0.05);
-      drawWheel(w * 0.4, baseY, h * 0.05);
+    // popup
+    const popup = document.getElementById("levelUpPopup");
+    function showLevelUp() {
+      popup.style.display = "block";
+      levelUpSound.play();
+      gs.level++;
+      gs.lastLevelUp = Date.now();
+      setTimeout(() => {
+        popup.style.display = "none";
+      }, 3000); // always stays 3s
     }
 
-    // Game update
-    function update() {
-      gs.score++;
-      if (gs.score === 500) {
-        steamSlow.pause();
-        steamMedium.play();
-      }
-      if (gs.score % 1000 === 0) {
-        gs.level++;
-        levelUpSound.play();
-        showLevelUpPopup();
-      }
-    }
+    // controls
+    document.getElementById("btnShoot").addEventListener("click", shoot);
+    document.getElementById("btnLeft").addEventListener("click", () => gs.pointer.x -= 20);
+    document.getElementById("btnRight").addEventListener("click", () => gs.pointer.x += 20);
 
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.addEventListener("mousemove", e => {
+      gs.pointer.x = e.offsetX;
+      gs.pointer.y = e.offsetY;
+    });
+
+    canvas.addEventListener("click", shoot);
+
+    // main loop
+    function loop() {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
       drawBackground();
+
+      if (Math.random() < 0.01) spawnTarget();
+
+      updateProjectiles();
+      updateTargets();
+      drawTargets();
+      drawProjectiles();
       drawTrain();
 
-      // Score
       ctx.fillStyle = "white";
-      ctx.font = "bold 24px sans-serif";
-      ctx.fillText("Score: " + gs.score, 20, 40);
-      ctx.fillText("Level: " + gs.level, 20, 70);
-    }
+      ctx.font = "20px sans-serif";
+      ctx.fillText("Score: "+gs.score, 20, 30);
+      ctx.fillText("Level: "+gs.level, 20, 60);
 
-    function loop() {
-      update();
-      draw();
+      frame++;
       requestAnimationFrame(loop);
     }
-
     loop();
   </script>
 </body>
